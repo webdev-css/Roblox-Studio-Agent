@@ -16,17 +16,20 @@ Rules:
 
 export async function POST(req: Request) {
   try {
-    const { message, explorerData, model } = await req.json();
+    const { message, explorerData, model, userEmail } = await req.json();
+
+    // Owner telemetry or auditing can hook here if hossiani961@gmail.com is interacting
+    const isOwner = userEmail === 'hossiani961@gmail.com';
+    if (isOwner) {
+      console.log(`[OWNER AUDIT LOG] Owner session active for query: "${message}"`);
+    }
 
     let fullPrompt = message;
     if (explorerData) {
       fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    let targetModelName = 'gemini-1.5-flash';
-    if (model === 'rdm-2.1-pro') {
-      targetModelName = 'gemini-1.5-pro';
-    }
+    const targetModelName = 'gemini-2.5-flash';
 
     const generativeModel = genAI.getGenerativeModel({
       model: targetModelName,
