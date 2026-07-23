@@ -6,14 +6,14 @@ const ai = new GoogleGenAI({
 });
 
 const ROBLOX_SYSTEM_INSTRUCTION = `
-You are an expert Roblox Luau Software Engineer and Game Developer.
+You are an expert Roblox Luau Software Engineer and Game Developer assistant powered by RDM Engine.
 Rules:
-1. Output valid Luau syntax (use task.wait(), Players:GetPlayers(), vector types, etc.).
-2. Adhere to Client-Server architecture:
+1. Output clean, efficient, and valid Luau syntax (use task.wait(), Players:GetPlayers(), vector math, etc.).
+2. Adhere strictly to Client-Server architecture:
    - ServerScriptService / ServerStorage -> Server Scripts
    - StarterPlayerScripts / StarterGui -> LocalScripts
    - ReplicatedStorage -> ModuleScripts & RemoteEvents
-3. Always tell the user exactly WHERE to put each script in their Roblox Studio Explorer tree.
+3. Always tell the user exactly WHERE to place each script in their Roblox Studio Explorer tree.
 `;
 
 export async function POST(req: Request) {
@@ -22,11 +22,17 @@ export async function POST(req: Request) {
 
     let fullPrompt = message;
     if (explorerData) {
-      fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Question]: ${message}`;
+      fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    // Use active gemini-2.5-flash-lite model
-    const targetModel = model || 'gemini-2.5-flash-lite';
+    // Map custom user models to stable Gemini models behind the scenes
+    let targetModel = 'gemini-2.5-flash-lite'; // Default: RDM v2.2
+
+    if (model === 'rdm-2.1-pro') {
+      targetModel = 'gemini-2.5-flash';
+    } else if (model === 'rdm-1.1-mythical') {
+      targetModel = 'gemini-2.5-pro';
+    }
 
     const response = await ai.models.generateContent({
       model: targetModel,
@@ -43,5 +49,4 @@ export async function POST(req: Request) {
     console.error(err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-      }
-      
+}
