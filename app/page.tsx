@@ -16,9 +16,10 @@ export default function Home() {
   const [deviceMode, setDeviceMode] = useState<'mobile' | 'pc'>('pc');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
   // Auth & OTP State
-  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+  const [user, setUser] = useState<{ email: string; name: string; isAdmin: boolean } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authName, setAuthName] = useState('');
@@ -26,6 +27,21 @@ export default function Home() {
   const [sentCode, setSentCode] = useState('');
   const [enteredCode, setEnteredCode] = useState('');
   const [sendingCode, setSendingCode] = useState(false);
+
+  // Mocked active user logs for the Owner Admin panel
+  const [monitoredUsers, setMonitoredUsers] = useState([
+    { email: 'hossiani961@gmail.com', role: 'Owner / Admin', status: 'Active', lastActive: 'Just now' },
+    { email: 'robloxdev_test@gmail.com', role: 'User', status: 'Active', lastActive: '2 mins ago' },
+  ]);
+
+  const handleBanUser = (targetEmail: string) => {
+    if (targetEmail === 'hossiani961@gmail.com') {
+      alert("❌ You cannot ban the site owner!");
+      return;
+    }
+    setMonitoredUsers(prev => prev.filter(u => u.email !== targetEmail));
+    alert(`🚫 User ${targetEmail} has been banned from the platform.`);
+  };
 
   // Send message to AI
   const sendMessage = async () => {
@@ -44,7 +60,7 @@ export default function Home() {
           message: userMessage,
           explorerData,
           model: selectedModel,
-          userSession: user,
+          userEmail: user?.email || '',
         }),
       });
 
@@ -93,15 +109,17 @@ export default function Home() {
   const handleVerifyCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (enteredCode.trim() === sentCode) {
+      const isOwner = authEmail.toLowerCase() === 'hossiani961@gmail.com';
       setUser({
         email: authEmail,
         name: authName || authEmail.split('@')[0],
+        isAdmin: isOwner,
       });
       setShowAuthModal(false);
       setCodeSent(false);
       setEnteredCode('');
       setAuthEmail('');
-      alert('🎉 Verification successful! Welcome back.');
+      alert(isOwner ? '👑 Welcome back, Owner! Admin rights unlocked.' : '🎉 Verification successful! Welcome back.');
     } else {
       alert('❌ Invalid verification code. Check your email inbox again.');
     }
@@ -130,6 +148,12 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {user?.isAdmin && (
+            <button onClick={() => setShowAdminModal(true)} style={{ backgroundColor: '#b45309', color: '#fff', border: '1px solid #f59e0b', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+              👑 Admin Panel
+            </button>
+          )}
+
           {user ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', color: '#fbbf24' }}>👤 {user.name}</span>
@@ -249,6 +273,32 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Owner Admin Modal */}
+      {showAdminModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#1e1e1e', border: '1px solid #f59e0b', borderRadius: '12px', padding: '24px', width: '450px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#fbbf24' }}>👑 Owner Admin Dashboard</h3>
+            <p style={{ fontSize: '12px', color: '#a3a3a3', margin: 0 }}>Monitor active website users and manage permissions or bans.</p>
+            
+            <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#121212', padding: '10px', borderRadius: '8px' }}>
+              {monitoredUsers.map((u, index) => (
+                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', backgroundColor: '#262626', borderRadius: '6px', fontSize: '12px' }}>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 'bold' }}>{u.email}</div>
+                    <div style={{ color: '#a3a3a3', fontSize: '10px' }}>Role: {u.role} | Status: {u.status}</div>
+                  </div>
+                  {u.email !== 'hossiani961@gmail.com' && (
+                    <button onClick={() => handleBanUser(u.email)} style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Ban</button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setShowAdminModal(false)} style={{ width: '100%', padding: '10px', backgroundColor: '#262626', color: '#fff', border: '1px solid #404040', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Close Admin Panel</button>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {showSettings && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
@@ -287,56 +337,4 @@ export default function Home() {
                   type="email"
                   placeholder="Email Address"
                   value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  required
-                  style={{ padding: '8px 12px', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '6px', color: '#fff', outline: 'none', fontSize: '13px' }}
-                />
-                <button
-                  type="submit"
-                  disabled={sendingCode}
-                  style={{ padding: '10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '4px' }}
-                >
-                  {sendingCode ? 'Sending Code...' : 'Send Verification Code 📧'}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyCode} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <p style={{ fontSize: '12px', color: '#a3a3a3', margin: 0 }}>
-                  We sent a 6-digit code to <strong style={{ color: '#fbbf24' }}>{authEmail}</strong>
-                </p>
-                <input
-                  type="text"
-                  placeholder="6-Digit Code (e.g. 123456)"
-                  value={enteredCode}
-                  onChange={(e) => setEnteredCode(e.target.value)}
-                  maxLength={6}
-                  required
-                  style={{ padding: '10px 12px', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '6px', color: '#fbbf24', fontSize: '18px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px', outline: 'none' }}
-                />
-                <button
-                  type="submit"
-                  style={{ padding: '10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  Verify & Complete Login 🎉
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCodeSent(false)}
-                  style={{ backgroundColor: 'transparent', color: '#a3a3a3', border: 'none', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  ← Back to change email
-                </button>
-              </form>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '12px', color: '#a3a3a3' }}>
-              <span onClick={() => { setShowAuthModal(false); setCodeSent(false); }} style={{ cursor: 'pointer' }}>Close</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-                             }
-                             
+        
