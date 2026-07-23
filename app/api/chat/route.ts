@@ -22,16 +22,16 @@ export async function POST(req: Request) {
 
     let fullPrompt = message;
     if (explorerData) {
-      fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Request]: ${message}`;
+      fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    // STRICT MODEL MAPPING: Maps any custom model input directly to official Gemini API model names
-    let targetModel = 'gemini-2.5-flash-lite';
+    // MAP CUSTOM MODELS TO ACTIVE GEMINI ENDPOINTS
+    let targetModel = 'gemini-3.5-flash-lite'; // RDM v2.2 (Ultra fast)
 
     if (model === 'rdm-2.1-pro') {
-      targetModel = 'gemini-2.5-flash';
+      targetModel = 'gemini-3.6-flash';      // RDM v2.1 Pro (Clean Code & UI)
     } else if (model === 'rdm-1.1-mythical') {
-      targetModel = 'gemini-2.5-pro';
+      targetModel = 'gemini-3.5-flash';      // RDM v1.1 Mythical (Advanced Logic)
     }
 
     const response = await ai.models.generateContent({
@@ -46,7 +46,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, reply: replyText });
   } catch (err: any) {
-    console.error(err);
+    console.error('API Error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-}
+    }
+      
