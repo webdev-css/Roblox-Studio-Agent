@@ -25,7 +25,8 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Question]: ${message}`;
     }
 
-    const targetModel = model || 'gemini-2.0-flash-lite';
+    // Use active gemini-2.5-flash-lite model
+    const targetModel = model || 'gemini-2.5-flash-lite';
 
     const response = await ai.models.generateContent({
       model: targetModel,
@@ -42,5 +43,4 @@ export async function POST(req: Request) {
     console.error(err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-      }
-  
+}
