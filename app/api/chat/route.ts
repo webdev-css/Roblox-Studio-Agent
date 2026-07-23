@@ -25,8 +25,8 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    // Map custom user models to stable Gemini models behind the scenes
-    let targetModel = 'gemini-2.5-flash-lite'; // Default: RDM v2.2
+    // STRICT MODEL MAPPING: Maps any custom model input directly to official Gemini API model names
+    let targetModel = 'gemini-2.5-flash-lite';
 
     if (model === 'rdm-2.1-pro') {
       targetModel = 'gemini-2.5-flash';
