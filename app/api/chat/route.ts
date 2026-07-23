@@ -1,53 +1,242 @@
-import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+'use client';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-const ROBLOX_SYSTEM_INSTRUCTION = `
-You are an expert Roblox Luau Software Engineer and Game Developer assistant powered by RDM Engine.
-Rules:
-1. Output clean, efficient, and valid Luau syntax (use task.wait(), Players:GetPlayers(), vector math, etc.).
-2. Adhere strictly to Client-Server architecture:
-   - ServerScriptService / ServerStorage -> Server Scripts
-   - StarterPlayerScripts / StarterGui -> LocalScripts
-   - ReplicatedStorage -> ModuleScripts & RemoteEvents
-3. Always tell the user exactly WHERE to place each script in their Roblox Studio Explorer tree.
-`;
+export default function Home() {
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
+  const [input, setInput] = useState('');
+  const [explorerData, setExplorerData] = useState('');
+  const [selectedModel, setSelectedModel] = useState('rdm-2.2');
+  const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-export async function POST(req: Request) {
-  try {
-    const { message, explorerData, model } = await req.json();
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
 
-    let fullPrompt = message;
-    if (explorerData) {
-      fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
+    const userMessage = input;
+    setInput('');
+    setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          explorerData,
+          model: selectedModel,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) => [...prev, { role: 'ai', text: data.reply }]);
+      } else {
+        setMessages((prev) => [...prev, { role: 'ai', text: `❌ Error: ${data.error}` }]);
+      }
+    } catch (err: any) {
+      setMessages((prev) => [...prev, { role: 'ai', text: `❌ Network Error: ${err.message}` }]);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // MAP CUSTOM MODELS TO ACTIVE GEMINI ENDPOINTS
-    let targetModel = 'gemini-3.5-flash-lite'; // RDM v2.2 (Ultra fast)
+  const clearChat = () => {
+    setMessages([]);
+  };
 
-    if (model === 'rdm-2.1-pro') {
-      targetModel = 'gemini-3.6-flash';      // RDM v2.1 Pro (Clean Code & UI)
-    } else if (model === 'rdm-1.1-mythical') {
-      targetModel = 'gemini-3.5-flash';      // RDM v1.1 Mythical (Advanced Logic)
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Script copied to clipboard!');
+  };
 
-    const response = await ai.models.generateContent({
-      model: targetModel,
-      contents: fullPrompt,
-      config: {
-        systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
-      },
-    });
-
-    const replyText = response.text || '';
-
-    return NextResponse.json({ success: true, reply: replyText });
-  } catch (err: any) {
-    console.error('API Error:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  }
-    }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#171717', color: '#ececec', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
+      {/* Top Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#1e1e1e', borderBottom: '1px solid #2e2e2e' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff', fontSize: '18px' }}>⚡</div>
+          <div>
+            <span style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f5', display: 'block' }}>Roblox Studio AI</span>
+            <span style={{ fontSize: '11px', color: '#a3a3a3' }}>Powered by RDM Engine</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {messages.length > 0 && (
+            <button 
+              onClick={clearChat}
+              style={{ backgroundColor: '#262626', color: '#ef4444', border: '1px solid #404040', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+          )}
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            style={{ backgroundColor: '#262626', color: '#f5f5f5', border: '1px solid #404040', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }}
+          >
+            {sidebarOpen ? 'Close ✕' : '⚙️ Options'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        
+        {/* Mobile Slide-out Drawer */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: sidebarOpen ? 0 : '-100%',
+          width: '85%',
+          maxWidth: '320px',
+          height: '100%',
+          backgroundColor: '#1e1e1e',
+          padding: '18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '18px',
+          borderRight: '1px solid #2e2e2e',
+          transition: 'left 0.25s ease',
+          zIndex: 50,
+          boxShadow: sidebarOpen ? '6px 0 16px rgba(0,0,0,0.6)' : 'none'
+        }}>
+          <div>
+            <label style={{ fontSize: '11px', fontWeight: '700', color: '#a3a3a3', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Model Engine
+            </label>
+            <select 
+              value={selectedModel} 
+              onChange={(e) => setSelectedModel(e.target.value)}
+              style={{ width: '100%', padding: '10px', backgroundColor: '#262626', color: '#f5f5f5', border: '1px solid #404040', borderRadius: '8px', fontSize: '13px', outline: 'none' }}
+            >
+              <option value="rdm-2.2">RDM v2.2 [Fastest Answers]</option>
+              <option value="rdm-2.1-pro">RDM v2.1 Pro [Clean UI & Scripting]</option>
+              <option value="rdm-1.1-mythical">RDM v1.1 Mythical [Pro - Best UI & Code]</option>
+            </select>
+          </div>
+
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <label style={{ fontSize: '11px', fontWeight: '700', color: '#a3a3a3', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Roblox Explorer Context
+            </label>
+            <textarea
+              placeholder="Paste Workspace / ReplicatedStorage tree structure here..."
+              value={explorerData}
+              onChange={(e) => setExplorerData(e.target.value)}
+              style={{ flex: 1, width: '100%', backgroundColor: '#262626', color: '#fbbf24', padding: '10px', border: '1px solid #404040', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', resize: 'none', outline: 'none' }}
+            />
+          </div>
+
+          <button 
+            onClick={() => setSidebarOpen(false)}
+            style={{ width: '100%', padding: '12px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+          >
+            Apply & Back to Chat
+          </button>
+        </div>
+
+        {sidebarOpen && (
+          <div 
+            onClick={() => setSidebarOpen(false)}
+            style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 40 }}
+          />
+        )}
+
+        {/* Main Chat Interface */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+          
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {messages.length === 0 && (
+              <div style={{ textAlign: 'center', marginTop: '60px', padding: '0 20px', color: '#a3a3a3' }}>
+                <h1 style={{ fontSize: '22px', color: '#f5f5f5', fontWeight: '600', marginBottom: '8px' }}>Roblox AI Studio Assistant</h1>
+                <p style={{ fontSize: '13px', color: '#737373', maxWidth: '360px', margin: '0 auto 20px auto' }}>Ask for Luau scripts, Leaderstats, Shop GUIs, or RemoteEvent workflows.</p>
+              </div>
+            )}
+
+            {messages.map((m, i) => (
+              <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '94%', width: m.role === 'ai' ? '100%' : 'auto' }}>
+                <div style={{
+                  backgroundColor: m.role === 'user' ? '#2563eb' : '#262626',
+                  color: '#f5f5f5',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  border: m.role === 'user' ? 'none' : '1px solid #333333',
+                  wordBreak: 'break-word'
+                }}>
+                  {m.role === 'user' ? (
+                    <div>{m.text}</div>
+                  ) : (
+                    <ReactMarkdown ({ children components="{{" h1: remarkPlugins="{[remarkGfm]}"> <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: '#f5f5f5', margin: '12px 0 6px 0' }}>{children}</h1>,
+                        h2: ({ children }) => <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#fbbf24', margin: '12px 0 6px 0' }}>{children}</h2>,
+                        h3: ({ children }) => <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8', margin: '10px 0 4px 0' }}>{children}</h3>,
+                        strong: ({ children }) => <strong style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</strong>,
+                        ul: ({ children }) => <ul style={{ paddingLeft: '20px', margin: '8px 0' }}>{children}</ul>,
+                        ol: ({ children }) => <ol style={{ paddingLeft: '20px', margin: '8px 0' }}>{children}</ol>,
+                        li: ({ children }) => <li style={{ marginBottom: '4px' }}>{children}</li>,
+                        code({ className, children, ...props }) {
+                          const codeString = String(children).replace(/\n$/, '');
+                          return (
+                            <div style={{ margin: '10px 0', borderRadius: '8px', overflow: 'hidden', border: '1px solid #404040' }}>
+                              <div style={{ backgroundColor: '#171717', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333' }}>
+                                <span style={{ fontSize: '11px', color: '#a3a3a3', fontFamily: 'monospace' }}>Luau Script</span>
+                                <button 
+                                  onClick={() => copyToClipboard(codeString)}
+                                  style={{ backgroundColor: '#262626', color: '#fbbf24', border: '1px solid #404040', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}
+                                >
+                                  📋 Copy Code
+                                </button>
+                              </div>
+                              <pre style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '12px', margin: 0, overflowX: 'auto', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.4' }}>
+                                <code>{codeString}</code>
+                              </pre>
+                            </div>
+                          );
+                        }
+                      }}
+                    >
+                      {m.text}
+                    </ReactMarkdown>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div style={{ color: '#d97706', fontSize: '13px', fontStyle: 'italic', paddingLeft: '8px' }}>
+                ⚡ RDM Engine generating Luau code...
+              </div>
+            )}
+          </div>
+
+          {/* Floating Input Bar */}
+          <div style={{ padding: '12px' }}>
+            <div style={{ display: 'flex', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '10px', padding: '6px 8px', gap: '6px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Ask RDM for a script or setup..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '14px', outline: 'none', padding: '6px' }}
+              />
+              <button 
+                onClick={sendMessage}
+                style={{ backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 14px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+        }
+          
