@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Question]: ${message}`;
     }
 
-    const targetModel = model || 'gemini-2.0-flash';
+    const targetModel = model || 'gemini-2.0-flash-lite';
 
     const response = await ai.models.generateContent({
       model: targetModel,
