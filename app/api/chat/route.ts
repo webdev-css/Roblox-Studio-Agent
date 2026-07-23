@@ -18,15 +18,17 @@ Rules:
 
 export async function POST(req: Request) {
   try {
-    const { message, explorerData } = await req.json();
+    const { message, explorerData, model } = await req.json();
 
     let fullPrompt = message;
     if (explorerData) {
       fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Question]: ${message}`;
     }
 
+    const targetModel = model || 'gemini-2.0-flash';
+
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: targetModel,
       contents: fullPrompt,
       config: {
         systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
@@ -41,4 +43,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
       }
-      
+  
