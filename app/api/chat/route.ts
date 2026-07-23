@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const ROBLOX_SYSTEM_INSTRUCTION = `
 You are an expert Roblox Luau Software Engineer and Game Developer assistant powered by RDM Engine.
@@ -18,35 +16,32 @@ Rules:
 
 export async function POST(req: Request) {
   try {
-    const { message, explorerData, model, userSession } = await req.json();
+    const { message, explorerData, model } = await req.json();
 
     let fullPrompt = message;
     if (explorerData) {
       fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    let targetModel = 'gemini-2.5-flash';
-
+    // Select model variant
+    let targetModelName = 'gemini-1.5-flash';
     if (model === 'rdm-2.1-pro') {
-      targetModel = 'gemini-2.5-pro';
-    } else if (model === 'rdm-1.1-mythical') {
-      targetModel = 'gemini-2.5-flash';
+      targetModelName = 'gemini-1.5-pro';
     }
 
-    const response = await ai.models.generateContent({
-      model: targetModel,
-      contents: fullPrompt,
-      config: {
-        systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
-      },
+    const generativeModel = genAI.getGenerativeModel({
+      model: targetModelName,
+      systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
     });
 
-    const replyText = response.text || '';
+    const result = await generativeModel.generateContent(fullPrompt);
+    const response = await result.response;
+    const replyText = response.text() || '';
 
     return NextResponse.json({ success: true, reply: replyText });
   } catch (err: any) {
     console.error('API Error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-    }
+}
   
