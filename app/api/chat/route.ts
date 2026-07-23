@@ -28,8 +28,8 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    // Updated to latest stable model identifier
-    const targetModelName = 'gemini-2.5-flash';
+    // Updated to the current active model version
+    const targetModelName = 'gemini-3.5-flash';
 
     const generativeModel = genAI.getGenerativeModel({
       model: targetModelName,
@@ -45,5 +45,5 @@ export async function POST(req: Request) {
     console.error('API Error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-  }
+       }
    
