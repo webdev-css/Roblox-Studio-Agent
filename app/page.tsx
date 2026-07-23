@@ -344,4 +344,50 @@ export default function Home() {
                 />
                 <button
                   type="submit"
-                  disabled={send
+                  disabled={sendingCode}
+                  style={{ padding: '10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '4px' }}
+                >
+                  {sendingCode ? 'Sending Code...' : 'Send Verification Code 📧'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ fontSize: '12px', color: '#a3a3a3', margin: 0 }}>
+                  We sent a 6-digit code to <strong style={{ color: '#fbbf24' }}>{authEmail}</strong>
+                </p>
+                <input
+                  type="text"
+                  placeholder="6-Digit Code (e.g. 123456)"
+                  value={enteredCode}
+                  onChange={(e) => setEnteredCode(e.target.value)}
+                  maxLength={6}
+                  required
+                  style={{ padding: '10px 12px', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '6px', color: '#fbbf24', fontSize: '18px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px', outline: 'none' }}
+                />
+                <button
+                  type="submit"
+                  style={{ padding: '10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Verify & Complete Login 🎉
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCodeSent(false)}
+                  style={{ backgroundColor: 'transparent', color: '#a3a3a3', border: 'none', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  ← Back to change email
+                </button>
+              </form>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '12px', color: '#a3a3a3' }}>
+              <span onClick={() => { setShowAuthModal(false); setCodeSent(false); }} style={{ cursor: 'pointer' }}>Close</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+                     }
+          
