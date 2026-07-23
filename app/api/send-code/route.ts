@@ -41,4 +41,5 @@ export async function POST(req: Request) {
     console.error('Email Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
-}
+      }
+              
