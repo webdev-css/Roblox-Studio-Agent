@@ -23,7 +23,6 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
     }
 
-    // Select model variant
     let targetModelName = 'gemini-1.5-flash';
     if (model === 'rdm-2.1-pro') {
       targetModelName = 'gemini-1.5-pro';
@@ -44,4 +43,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
-  
+   
