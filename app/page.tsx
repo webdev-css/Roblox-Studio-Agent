@@ -1,35 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  FolderTree, MessageSquarePlus, Send, 
-  Crown, Sparkles, User, Code 
-} from 'lucide-react';
 
-export default function RobloxAiDashboard() {
-  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([
-    { role: 'ai', content: 'Hello Dev! 👋 What are we building in Roblox Studio today?' }
-  ]);
+export default function Home() {
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
   const [input, setInput] = useState('');
-  const [explorerTree, setExplorerTree] = useState(
-`Workspace
- ├── SpawnLocation
- └── Model
-ServerScriptService
- └── Script
-StarterGui
- └── ScreenGui
-     └── TextButton`
-  );
-  const [isPro, setIsPro] = useState(false);
+  const [explorerData, setExplorerData] = useState('');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
   const [loading, setLoading] = useState(false);
 
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
 
-    const userMsg = input;
+    const userMessage = input;
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
     setLoading(true);
 
     try {
@@ -37,123 +22,100 @@ StarterGui
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: userMsg,
-          explorerData: explorerTree,
+          message: userMessage,
+          explorerData,
+          model: selectedModel,
         }),
       });
 
       const data = await res.json();
-
       if (data.success) {
-        setMessages(prev => [...prev, { role: 'ai', content: data.reply }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: data.reply }]);
       } else {
-        setMessages(prev => [...prev, { role: 'ai', content: '❌ Error: ' + data.error }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: `❌ Error: ${data.error}` }]);
       }
-    } catch (err) {
-      setMessages(prev => [...prev, { role: 'ai', content: '❌ Failed to reach the server.' }]);
+    } catch (err: any) {
+      setMessages((prev) => [...prev, { role: 'ai', text: `❌ Network Error: ${err.message}` }]);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans">
-      {/* SIDEBAR */}
-      <aside className="w-80 border-r border-slate-800 bg-slate-900/50 flex flex-col p-4 gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-rose-500 font-bold text-lg">
-            <Code className="w-6 h-6" />
-            <span>RobloxAI Studio</span>
-          </div>
-          {isPro ? (
-            <span className="flex items-center gap-1 text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded-full border border-amber-500/30">
-              <Crown className="w-3 h-3" /> PRO
-            </span>
-          ) : (
-            <button 
-              onClick={() => setIsPro(true)}
-              className="text-xs bg-gradient-to-r from-amber-500 to-rose-500 text-black font-semibold px-2 py-1 rounded hover:opacity-90 transition"
-            >
-              Upgrade
-            </button>
-          )}
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
+      {/* Sidebar */}
+      <div style={{ width: '300px', backgroundColor: '#1e293b', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: '1px solid #334155' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#38bdf8' }}>🛠️ Roblox Studio AI</h2>
+        
+        {/* Model Selector */}
+        <div>
+          <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>AI Model:</label>
+          <select 
+            value={selectedModel} 
+            onChange={(e) => setSelectedModel(e.target.value)}
+            style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #475569', borderRadius: '6px' }}
+          >
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast & Free)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Advanced Logic)</option>
+          </select>
         </div>
 
-        <button 
-          onClick={() => setMessages([{ role: 'ai', content: 'Started a new session! What script or GUI are we making?' }])}
-          className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 py-2 rounded-lg border border-slate-700 transition text-sm font-medium"
-        >
-          <MessageSquarePlus className="w-4 h-4" /> New Chat
-        </button>
-
-        <div className="flex-1 flex flex-col gap-2">
-          <label className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-            <FolderTree className="w-4 h-4 text-rose-400" /> Roblox Explorer Structure
-          </label>
+        {/* Explorer Hierarchy Input */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <label style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>Roblox Explorer Context:</label>
           <textarea
-            value={explorerTree}
-            onChange={(e) => setExplorerTree(e.target.value)}
-            className="flex-1 w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-rose-500 resize-none"
-            placeholder="Paste your studio layout here..."
+            placeholder="Paste Explorer tree here..."
+            value={explorerData}
+            onChange={(e) => setExplorerData(e.target.value)}
+            style={{ flex: 1, width: '100%', backgroundColor: '#0f172a', color: '#38bdf8', padding: '8px', border: '1px solid #475569', borderRadius: '6px', fontFamily: 'monospace', fontSize: '12px', resize: 'none' }}
           />
         </div>
-      </aside>
+      </div>
 
-      {/* MAIN CHAT AREA */}
-      <main className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/20">
-          <span className="text-xs text-slate-400 font-mono">Powered by Claude 3.5 Sonnet</span>
-          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
-            <User className="w-4 h-4 text-slate-300" />
-          </div>
-        </header>
-
-        {/* MESSAGES FEED */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.map((msg, i) => (
-            <div 
-              key={i} 
-              className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div 
-                className={`max-w-2xl rounded-xl p-4 text-sm leading-relaxed ${
-                  msg.role === 'user' 
-                    ? 'bg-rose-600 text-white rounded-br-none' 
-                    : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none font-mono whitespace-pre-wrap'
-                }`}
-              >
-                {msg.content}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="flex items-center gap-2 text-slate-400 text-xs italic">
-              <Sparkles className="w-4 h-4 animate-spin text-rose-500" /> Roblox AI is generating Luau script...
+      {/* Main Chat Interface */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {messages.length === 0 && (
+            <div style={{ textAlign: 'center', marginTop: '40px', color: '#64748b' }}>
+              <h3>Welcome Dev! 👋</h3>
+              <p>Ask for Luau scripts, RemoteEvents, or shop setups!</p>
             </div>
           )}
+          {messages.map((m, i) => (
+            <div key={i} style={{
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              backgroundColor: m.role === 'user' ? '#0284c7' : '#1e293b',
+              color: '#fff',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              maxWidth: '80%',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {m.text}
+            </div>
+          ))}
+          {loading && <div style={{ color: '#38bdf8' }}>Thinking...</div>}
         </div>
 
-        {/* INPUT */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/30">
-          <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 focus-within:border-rose-500">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Ask for a Luau script, shop GUI layout, or bug fix..."
-              className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
-            />
-            <button 
-              onClick={handleSendMessage}
-              className="bg-rose-600 hover:bg-rose-500 text-white p-2 rounded-md transition"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Input Bar */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            placeholder="Ask for a Luau script..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            style={{ flex: 1, padding: '12px', backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', borderRadius: '6px' }}
+          />
+          <button 
+            onClick={sendMessage}
+            style={{ padding: '12px 24px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Send
+          </button>
         </div>
-      </main>
+      </div>
     </div>
   );
-     }
-    
+        }
+          
