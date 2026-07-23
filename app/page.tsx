@@ -4,22 +4,30 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+interface Message {
+  role: 'user' | 'ai';
+  text: string;
+}
+
+interface UserSession {
+  email: string;
+  name: string;
+  isAdmin: boolean;
+}
+
 export default function Home() {
-  // Chat state
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [explorerData, setExplorerData] = useState('');
   const [selectedModel, setSelectedModel] = useState('rdm-2.2');
   const [loading, setLoading] = useState(false);
 
-  // Layout & Settings State
   const [deviceMode, setDeviceMode] = useState<'mobile' | 'pc'>('pc');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
 
-  // Auth & OTP State
-  const [user, setUser] = useState<{ email: string; name: string; isAdmin: boolean } | null>(null);
+  const [user, setUser] = useState<UserSession | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authName, setAuthName] = useState('');
@@ -28,10 +36,9 @@ export default function Home() {
   const [enteredCode, setEnteredCode] = useState('');
   const [sendingCode, setSendingCode] = useState(false);
 
-  // Mocked active user logs for the Owner Admin panel
   const [monitoredUsers, setMonitoredUsers] = useState([
-    { email: 'hossiani961@gmail.com', role: 'Owner / Admin', status: 'Active', lastActive: 'Just now' },
-    { email: 'robloxdev_test@gmail.com', role: 'User', status: 'Active', lastActive: '2 mins ago' },
+    { email: 'hossiani961@gmail.com', role: 'Owner / Admin', status: 'Active' },
+    { email: 'robloxdev_test@gmail.com', role: 'User', status: 'Active' },
   ]);
 
   const handleBanUser = (targetEmail: string) => {
@@ -40,10 +47,9 @@ export default function Home() {
       return;
     }
     setMonitoredUsers(prev => prev.filter(u => u.email !== targetEmail));
-    alert(`🚫 User ${targetEmail} has been banned from the platform.`);
+    alert(`🚫 User ${targetEmail} has been banned.`);
   };
 
-  // Send message to AI
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
@@ -77,7 +83,6 @@ export default function Home() {
     }
   };
 
-  // Step 1: Send real code via Resend API
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail) return alert('Please enter your email address!');
@@ -105,7 +110,6 @@ export default function Home() {
     }
   };
 
-  // Step 2: Verify the code typed by user
   const handleVerifyCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (enteredCode.trim() === sentCode) {
@@ -174,7 +178,6 @@ export default function Home() {
       {/* Main App Layout */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         
-        {/* PC Sidebar */}
         {deviceMode === 'pc' && (
           <div style={{ width: '300px', backgroundColor: '#1e1e1e', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: '1px solid #2e2e2e' }}>
             <div>
@@ -193,7 +196,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Mobile Slide Drawer */}
         {deviceMode === 'mobile' && sidebarOpen && (
           <div style={{ position: 'absolute', top: 0, left: 0, width: '85%', maxWidth: '300px', height: '100%', backgroundColor: '#1e1e1e', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: '1px solid #2e2e2e', zIndex: 50 }}>
             <div>
@@ -263,7 +265,6 @@ export default function Home() {
             {loading && <div style={{ color: '#d97706', fontSize: '13px', fontStyle: 'italic' }}>⚡ RDM Engine generating response...</div>}
           </div>
 
-          {/* Floating Message Input */}
           <div style={{ padding: '12px' }}>
             <div style={{ display: 'flex', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '8px', padding: '6px', gap: '6px' }}>
               <input type="text" placeholder="Ask for Luau scripts..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '14px', outline: 'none', padding: '4px 8px' }} />
@@ -273,7 +274,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Owner Admin Modal */}
+      {/* Admin Modal */}
       {showAdminModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#1e1e1e', border: '1px solid #f59e0b', borderRadius: '12px', padding: '24px', width: '450px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -316,7 +317,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Auth Modal with Real Verification Code Flow */}
+      {/* Auth Modal */}
       {showAuthModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ backgroundColor: '#1e1e1e', border: '1px solid #404040', borderRadius: '12px', padding: '24px', width: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -337,4 +338,10 @@ export default function Home() {
                   type="email"
                   placeholder="Email Address"
                   value={authEmail}
-        
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  required
+                  style={{ padding: '8px 12px', backgroundColor: '#262626', border: '1px solid #404040', borderRadius: '6px', color: '#fff', outline: 'none', fontSize: '13px' }}
+                />
+                <button
+                  type="submit"
+                  disabled={send
