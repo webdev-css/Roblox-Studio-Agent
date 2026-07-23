@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 const ROBLOX_SYSTEM_INSTRUCTION = `
@@ -25,20 +25,20 @@ export async function POST(req: Request) {
       fullPrompt = `[Roblox Explorer Hierarchy]:\n${explorerData}\n\n[User Question]: ${message}`;
     }
 
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2048,
-      system: ROBLOX_SYSTEM_INSTRUCTION,
-      messages: [
-        { role: 'user', content: fullPrompt }
-      ],
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: fullPrompt,
+      config: {
+        systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
+      },
     });
 
-    const replyText = response.content[0].type === 'text' ? response.content[0].text : '';
+    const replyText = response.text || '';
 
     return NextResponse.json({ success: true, reply: replyText });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-}
+      }
+      
