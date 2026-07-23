@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 export default function Home() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
@@ -168,13 +169,18 @@ export default function Home() {
                   padding: '12px 14px',
                   borderRadius: '12px',
                   fontSize: '14px',
-                  lineHeight: '1.5',
-                  whiteSpace: 'pre-wrap',
+                  lineHeight: '1.6',
                   border: m.role === 'user' ? 'none' : '1px solid #333333',
                   wordBreak: 'break-word',
                   position: 'relative'
                 }}>
-                  {m.text}
+                  {/* Render Markdown formatted text */}
+                  {m.role === 'user' ? (
+                    <div>{m.text}</div>
+                  ) : (
+                    <ReactMarkdown>{m.text}</ReactMarkdown>
+                  )}
+
                   {m.role === 'ai' && (
                     <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #333', display: 'flex', justifyContent: 'flex-end' }}>
                       <button 
@@ -220,5 +226,5 @@ export default function Home() {
       </div>
     </div>
   );
-          }
-                                         
+        }
+        
