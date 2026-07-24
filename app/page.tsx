@@ -1,3 +1,5 @@
+"use client";
+
 // RobloxAIStudio.tsx
 // A self-contained, production-ready Roblox AI Studio interface.
 // No external dependencies beyond React. All styling is inline + a small injected stylesheet.
@@ -251,7 +253,6 @@ function detectIntent(prompt: string): "image" | "code" | "text" {
   ];
   const hasImage = imageWords.some((w) => p.includes(w));
   const hasCode = codeWords.some((w) => p.includes(w));
-  // Image intent wins only if it's clearly visual (not "gui script")
   if (hasImage && !p.includes("script") && !p.includes("code")) return "image";
   if (hasImage && !hasCode) return "image";
   if (hasCode) return "code";
@@ -287,7 +288,6 @@ local ITEMS = {
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Build the ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ShopGui"
 screenGui.ResetOnSpawn = false
@@ -889,7 +889,6 @@ const RobloxAIStudio: React.FC = () => {
 
       {/* ============================ BODY ============================ */}
       <div style={styles.body}>
-        {/* Overlay for mobile */}
         {sidebarOpen && isMobile && (
           <div style={styles.overlay} onClick={() => setSidebarOpen(false)} />
         )}
@@ -902,7 +901,6 @@ const RobloxAIStudio: React.FC = () => {
             position: isMobile ? "fixed" : "relative",
           }}
         >
-          {/* Model selector */}
           <div style={styles.sidebarSection}>
             <div style={styles.sectionLabel}>AI Model</div>
             <div style={{ position: "relative" }}>
@@ -957,7 +955,6 @@ const RobloxAIStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* Chat sessions */}
           <div style={styles.sidebarSection}>
             <div style={styles.sectionHeaderRow}>
               <span style={styles.sectionLabel}>Chats</span>
@@ -1004,7 +1001,6 @@ const RobloxAIStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* Explorer */}
           <div style={{ ...styles.sidebarSection, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div style={styles.sectionLabel}>Explorer</div>
             <div style={styles.explorerTree}>
@@ -1067,7 +1063,6 @@ const RobloxAIStudio: React.FC = () => {
                   )}
                   <div style={styles.bubbleText}>{m.text}</div>
 
-                  {/* Code block */}
                   {m.code && (
                     <div style={styles.codeBlock}>
                       <div style={styles.codeHeader}>
@@ -1105,7 +1100,6 @@ const RobloxAIStudio: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Generated images */}
                   {m.images && m.images.length > 0 && (
                     <div style={styles.imageGrid}>
                       {m.images.map((img) => (
@@ -1150,7 +1144,6 @@ const RobloxAIStudio: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Composer */}
           <div style={styles.composerWrap}>
             <div style={styles.composer}>
               <textarea
@@ -1545,7 +1538,6 @@ const StatCard: React.FC<{
   </div>
 );
 
-/* Injects keyframes & scrollbar / placeholder styling that inline styles can't. */
 const StyleInjector: React.FC<{ accent: string; bgInput: string }> = ({ accent, bgInput }) => (
   <style
     dangerouslySetInnerHTML={{
@@ -1586,7 +1578,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       WebkitFontSmoothing: "antialiased",
     },
 
-    /* Header ---------------------------------------------------------------*/
     header: {
       position: "sticky",
       top: 0,
@@ -1703,7 +1694,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       textOverflow: "ellipsis",
     },
 
-    /* Body -----------------------------------------------------------------*/
     body: {
       flex: 1,
       display: "flex",
@@ -1718,7 +1708,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       zIndex: 40,
     },
 
-    /* Sidebar --------------------------------------------------------------*/
     sidebar: {
       top: 60,
       bottom: 0,
@@ -1764,7 +1753,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       marginBottom: 8,
     },
 
-    /* Model selector -------------------------------------------------------*/
     modelBtn: {
       width: "100%",
       display: "flex",
@@ -1805,7 +1793,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       cursor: "pointer",
     },
 
-    /* Sessions -------------------------------------------------------------*/
     sessionList: { display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" },
     sessionItem: {
       display: "flex",
@@ -1838,7 +1825,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       flexShrink: 0,
     },
 
-    /* Explorer -------------------------------------------------------------*/
     explorerTree: {
       overflowY: "auto",
       flex: 1,
@@ -1866,7 +1852,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       textOverflow: "ellipsis",
     },
 
-    /* Main / messages ------------------------------------------------------*/
     main: {
       flex: 1,
       display: "flex",
@@ -1909,7 +1894,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     },
     bubbleText: { whiteSpace: "pre-wrap", fontSize: 14, color: t.text },
 
-    /* Code block -----------------------------------------------------------*/
     codeBlock: {
       marginTop: 12,
       borderRadius: 10,
@@ -1960,7 +1944,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       maxHeight: 380,
     },
 
-    /* Image grid -----------------------------------------------------------*/
     imageGrid: {
       marginTop: 12,
       display: "grid",
@@ -1990,7 +1973,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     },
     imageTitle: { color: "#fff", fontSize: 12, fontWeight: 700 },
 
-    /* Typing ---------------------------------------------------------------*/
     typing: { display: "flex", gap: 5, padding: "4px 2px" },
     typingDot: {
       width: 8,
@@ -2001,7 +1983,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       animation: "rai-blink 1.2s infinite ease-in-out",
     },
 
-    /* Empty state ----------------------------------------------------------*/
     emptyState: {
       margin: "auto",
       textAlign: "center",
@@ -2045,7 +2026,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       textAlign: "left",
     },
 
-    /* Composer -------------------------------------------------------------*/
     composerWrap: {
       flex: "0 0 auto",
       padding: isMobile ? "10px 12px 14px" : "12px 20px 18px",
@@ -2092,7 +2072,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       marginTop: 8,
     },
 
-    /* Modal ----------------------------------------------------------------*/
     modalOverlay: {
       position: "fixed",
       inset: 0,
@@ -2129,7 +2108,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     modalTitle: { margin: 0, fontSize: 17, fontWeight: 700 },
     modalBody: { padding: 18, overflowY: "auto" },
 
-    /* Settings -------------------------------------------------------------*/
     settingsGroup: { marginBottom: 22 },
     settingsLabel: {
       fontSize: 12,
@@ -2269,7 +2247,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     accountEmail: { fontWeight: 600, fontSize: 13, wordBreak: "break-all" },
     accountRole: { fontSize: 12, color: t.accent, marginTop: 2 },
 
-    /* Admin ----------------------------------------------------------------*/
     statsRow: { display: "flex", gap: 10, marginBottom: 22 },
     statCard: {
       flex: 1,
@@ -2346,7 +2323,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
       fontWeight: 700,
     },
 
-    /* Image preview --------------------------------------------------------*/
     imagePreview: {
       position: "relative",
       width: "min(80vw, 420px)",
