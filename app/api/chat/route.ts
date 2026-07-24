@@ -1,23 +1,28 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Initialize Google AI with your environment variable key
+// Initialize Gemini SDK with your environment variable
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// System prompt tailored for high-quality Roblox Luau scripting
+// System prompt tailored for Roblox Luau scripting
 const SYSTEM_INSTRUCTION = `
 You are Roblox AI Studio, an expert AI assistant specialized in Roblox game development, Luau scripting, UI design, and game architecture.
 
-Rules for responses:
-1. Provide optimized, modern Luau code blocks (using standard Luau syntax, type annotations where helpful).
-2. Clearly distinguish between ServerScripts, LocalScripts, and ModuleScripts.
-3. Keep code clean, scannable, and well-commented.
-4. Avoid deprecated Roblox functions (e.g., use task.wait() instead of wait(), Instance.new with parent as 2nd argument avoidance, etc.).
+Guidelines:
+1. Provide optimized, modern Luau code blocks with clean formatting.
+2. Distinguish clearly between ServerScripts, LocalScripts, and ModuleScripts.
+3. Keep code easy to understand and well-commented.
+4. Use modern Roblox APIs (e.g., task.wait(), task.spawn(), modern Instance creation).
 `;
 
 export async function POST(req: Request) {
   try {
-    const { message, history } = await req.json();
+    const body = await req.json();
+
+    // Flexible extraction: handles 'message', 'prompt', 'text', 'content', or 'input'
+    const message =
+      body.message || body.prompt || body.text || body.content || body.input;
+    const history = body.history || [];
 
     if (!message) {
       return NextResponse.json(
@@ -33,7 +38,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Using gemini-3.6-flash for active support and high performance
+    // Initialize the model with active version
     const model = genAI.getGenerativeModel({
       model: "gemini-3.6-flash",
       systemInstruction: SYSTEM_INSTRUCTION,
@@ -41,9 +46,9 @@ export async function POST(req: Request) {
 
     // Format chat history for Gemini API
     const formattedHistory = Array.isArray(history)
-      ? history.map((item: { role: string; content: string }) => ({
+      ? history.map((item: { role: string; content?: string; text?: string }) => ({
           role: item.role === "user" ? "user" : "model",
-          parts: [{ text: item.content }],
+          parts: [{ text: item.content || item.text || "" }],
         }))
       : [];
 
@@ -62,4 +67,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-  }
+        }
