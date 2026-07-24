@@ -222,7 +222,6 @@ export default function Home() {
     }
   };
 
-  // Functional simulated backend call for verified code token generation
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail) return alert('Please enter your email address.');
@@ -236,21 +235,13 @@ export default function Home() {
       });
 
       const data = await res.json();
-      // Graceful fallback if endpoint is not fully wired up yet so login never fails
       const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
       const finalCode = data && data.success && data.code ? data.code : fallbackCode;
 
       setSentCode(finalCode);
       setCodeSent(true);
-      
-      // If code was generated locally via fallback, log or show guidance if needed
-      if (!data || !data.success) {
-        console.log('Using simulated verification code for seamless access:', finalCode);
-      }
-      
       alert(`Verification code dispatched to ${authEmail}. (Hint for testing: ${finalCode})`);
     } catch (err: any) {
-      // Complete robust fallback ensuring user login never gets stuck
       const fallbackCode = '123456';
       setSentCode(fallbackCode);
       setCodeSent(true);
@@ -309,7 +300,6 @@ export default function Home() {
       )}
     </div>
   );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: currentTheme.bg, color: currentTheme.text, fontFamily: 'system-ui, -apple-system, sans-serif', transition: 'background 0.4s ease, color 0.4s ease' }}>
       
@@ -424,12 +414,13 @@ export default function Home() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', width: '100%', position: 'relative' }}>
           
           {deviceMode === 'mobile' && (
-            <div style={{ padding: '6px 12px', backgroundColor: currentTheme.surface, borderBottom: `1px solid ${currentTheme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: '40px' }}>              <button onClick={() => setSidebarOpen(true)} style={{ backgroundColor: currentTheme.surfaceHover, color: currentTheme.text, border: `1px solid ${currentTheme.border}`, borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: '600' }}>Explorer and Context</button>
+            <div style={{ padding: '6px 12px', backgroundColor: currentTheme.surface, borderBottom: `1px solid ${currentTheme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: '40px' }}>
+              <button onClick={() => setSidebarOpen(true)} style={{ backgroundColor: currentTheme.surfaceHover, color: currentTheme.text, border: `1px solid ${currentTheme.border}`, borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: '600' }}>Explorer and Context</button>
               <span style={{ fontSize: '10px', color: currentTheme.accent, fontWeight: 'bold' }}>MOBILE MODE</span>
             </div>
           )}
 
-          {/* Messages Feed Container optimized to never get hidden by mobile soft keyboards */}
+          {/* Messages Feed Container */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '100%', paddingBottom: '30px' }}>
             
             {messages.length === 0 && (
@@ -543,8 +534,7 @@ export default function Home() {
             <div>
               <label style={{ fontSize: '11px', color: currentTheme.textDim, display: 'block', marginBottom: '6px', fontWeight: '600' }}>Theme Selector</label>
               <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => setTheme('dark')} style={{ flex: 1, padding: '6px', backgroundColor: theme === 'dark' ? currentTheme.accent : currentTheme.surfaceHover, color: '#fff', border: `1px solid ${currentTheme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}>Dark</button>
-                <button onClick={() => setTheme('midnight')} style={{ flex: 1, padding: '6px', backgroundColor: theme === 'midnight' ? currentTheme.accent : currentTheme.surfaceHover, color: '#fff', border: `1px solid ${currentTheme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}>Midnight</button>
+                <button onClick={() => setTheme('dark')} style={{ flex: 1, padding: '6px', backgroundColor: theme === 'dark' ? currentTheme.accent : currentTheme.surfaceHover, color: '#fff', border: `1px solid ${currentTheme.border}`, borderRadius: '4px', cursor: 'pointer', fon                <button onClick={() => setTheme('midnight')} style={{ flex: 1, padding: '6px', backgroundColor: theme === 'midnight' ? currentTheme.accent : currentTheme.surfaceHover, color: '#fff', border: `1px solid ${currentTheme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}>Midnight</button>
                 <button onClick={() => setTheme('cyberpunk')} style={{ flex: 1, padding: '6px', backgroundColor: theme === 'cyberpunk' ? currentTheme.accent : currentTheme.surfaceHover, color: '#fff', border: `1px solid ${currentTheme.border}`, borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold' }}>Cyberpunk</button>
               </div>
             </div>
@@ -643,6 +633,5 @@ export default function Home() {
 
     </div>
   );
-                   }
-          
-              <button onClick={() => setSidebarOpen(true)} style={{ backgroundColor: currentTheme.surfaceHover, color: currentTheme.text, border: `1px solid ${currentTheme.
+              }
+              
