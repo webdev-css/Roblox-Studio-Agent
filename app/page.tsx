@@ -1,7 +1,7 @@
 "use client";
 
 // RobloxAIStudio.tsx
-// Upgraded version featuring real API key integration (Gemini/OpenAI) and secure sessions.
+// Upgraded version featuring secure backend environment integration and email verification flow.
 
 import React, {
   useState,
@@ -186,29 +186,21 @@ const INITIAL_ADMIN_USERS: AdminUser[] = [
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-/* Real AI API call handler using user-provided API key */
-async function callRealAI(prompt: string, apiKey: string, systemPrompt: string): Promise<{ text: string; code?: { language: string; content: string; filename: string } | null }> {
-  if (!apiKey || apiKey.trim() === "") {
-    throw new Error("No API key provided. Please configure your API key in Settings.");
-  }
-
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+/* Backend-routed AI call using server-side configuration */
+async function callServerAI(prompt: string, systemPrompt: string): Promise<{ text: string; code?: { language: string; content: string; filename: string } | null }> {
+  const response = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        { role: "user", parts: [{ text: `${systemPrompt}\n\nUser request: ${prompt}` }] }
-      ]
-    })
+    body: JSON.stringify({ prompt, systemPrompt }),
   });
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `API Error: ${response.statusText}`);
+    throw new Error(errData.error || `Server Error: ${response.statusText}`);
   }
 
   const data = await response.json();
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+  const rawText = data.text || "No response generated.";
 
   let codeSnippet: { language: string; content: string; filename: string } | null = null;
   const codeBlockMatch = rawText.match(/```([a-zA-Z]*)\n([\s\S]*?)```/);
@@ -246,7 +238,7 @@ const Icon: React.FC<{ path: string; size?: number; color?: string }> = ({
 const ICONS = {
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "M18 6 6 18M6 6l12 12",
-  settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+  settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
   shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
   plus: "M12 5v14M5 12h14",
   trash: "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
@@ -289,17 +281,20 @@ const RobloxAIStudio: React.FC = () => {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
 
-  const [apiKey, setApiKey] = useState("");
-  const [systemInstructions, setSystemInstructions] = useState(
-    "You are Roblox AI Studio, an expert Luau engineer and Roblox assistant. Provide structured solutions and accurate code."
-  );
-
+  // Authentication & Verification Flow States
+  const [authStep, setAuthStep] = useState<"credentials" | "verify">("credentials");
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [authError, setAuthError] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
 
   const isOwner = currentUser === ADMIN_EMAIL;
+
+  const [systemInstructions, setSystemInstructions] = useState(
+    "You are Roblox AI Studio, an expert Luau engineer and Roblox assistant. Provide structured solutions and accurate code."
+  );
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     workspace: true,
@@ -315,7 +310,7 @@ const RobloxAIStudio: React.FC = () => {
         {
           id: uid(),
           role: "ai",
-          text: "👋 Welcome to Roblox AI Studio! Configure your API key in Settings to begin chatting with real AI capabilities.",
+          text: "👋 Welcome to Roblox AI Studio! Connected securely via backend environment.",
           createdAt: Date.now(),
           code: null,
         },
@@ -338,8 +333,6 @@ const RobloxAIStudio: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeSession?.messages, isTyping]);
-
-  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(INITIAL_ADMIN_USERS);
 
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -382,12 +375,6 @@ const RobloxAIStudio: React.FC = () => {
     const text = input.trim();
     if (!text || isTyping) return;
 
-    if (!apiKey) {
-      alert("Please enter your API Key in Settings first!");
-      setShowSettings(true);
-      return;
-    }
-
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",
@@ -413,7 +400,7 @@ const RobloxAIStudio: React.FC = () => {
     setIsTyping(true);
 
     try {
-      const result = await callRealAI(text, apiKey, systemInstructions);
+      const result = await callServerAI(text, systemInstructions);
       const aiMsg: ChatMessage = {
         id: uid(),
         role: "ai",
@@ -441,7 +428,7 @@ const RobloxAIStudio: React.FC = () => {
     } finally {
       setIsTyping(false);
     }
-  }, [input, isTyping, activeSessionId, apiKey, systemInstructions]);
+  }, [input, isTyping, activeSessionId, systemInstructions]);
 
   const copyCode = useCallback((msgId: string, content: string) => {
     navigator.clipboard?.writeText(content).then(() => {
@@ -462,18 +449,67 @@ const RobloxAIStudio: React.FC = () => {
     URL.revokeObjectURL(url);
   }, []);
 
-  const handleAuthSubmit = useCallback(() => {
+  /* Step 1: Request Verification Code via Email API */
+  const handleRequestVerification = useCallback(async () => {
     setAuthError("");
     const email = authEmail.trim().toLowerCase();
     if (!email || !authPassword) {
       setAuthError("Please fill in all fields.");
       return;
     }
-    setCurrentUser(email);
-    setShowAuth(false);
-    setAuthEmail("");
-    setAuthPassword("");
+
+    setIsSendingCode(true);
+    try {
+      const res = await fetch("/api/auth/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to send verification code.");
+      }
+
+      setAuthStep("verify");
+    } catch (err: any) {
+      setAuthError(err.message || "An error occurred sending verification code.");
+    } finally {
+      setIsSendingCode(false);
+    }
   }, [authEmail, authPassword]);
+
+  /* Step 2: Verify Code and Finalize Login */
+  const handleVerifyAndLogin = useCallback(async () => {
+    setAuthError("");
+    const code = verificationCode.trim();
+    if (!code) {
+      setAuthError("Please enter the verification code.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail.trim().toLowerCase(), code }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Invalid verification code.");
+      }
+
+      setCurrentUser(authEmail.trim().toLowerCase());
+      setShowAuth(false);
+      setAuthStep("credentials");
+      setAuthEmail("");
+      setAuthPassword("");
+      setVerificationCode("");
+    } catch (err: any) {
+      setAuthError(err.message || "Verification failed.");
+    }
+  }, [authEmail, verificationCode]);
 
   const styles = useMemo(() => makeStyles(t, isMobile), [t, isMobile]);
 
@@ -520,7 +556,7 @@ const RobloxAIStudio: React.FC = () => {
             <div style={styles.logoMark}>R</div>
             <div style={styles.brandTextWrap}>
               <span style={styles.brandTitle}>Roblox AI Studio</span>
-              <span style={styles.brandSub}>API-Powered Studio</span>
+              <span style={styles.brandSub}>Backend API Secured</span>
             </div>
           </div>
         </div>
@@ -534,7 +570,7 @@ const RobloxAIStudio: React.FC = () => {
           )}
           <button type="button" onClick={() => setShowSettings(true)} style={styles.headerBtn}>
             <Icon path={ICONS.settings} size={16} />
-            <span>Settings & API</span>
+            <span>Settings</span>
           </button>
           <button type="button" onClick={() => (currentUser ? setShowAdmin(true) : setShowAuth(true))} style={{ ...styles.headerBtn, ...styles.adminBtn }}>
             <Icon path={ICONS.shield} size={16} />
@@ -592,7 +628,7 @@ const RobloxAIStudio: React.FC = () => {
               <div style={styles.emptyState}>
                 <div style={styles.emptyLogo}>R</div>
                 <h2 style={styles.emptyTitle}>How can I help you build?</h2>
-                <p style={styles.emptySub}>Connected to real AI via API key. Ask any question!</p>
+                <p style={styles.emptySub}>Connected to backend environment. Ask any question!</p>
               </div>
             )}
 
@@ -672,19 +708,7 @@ const RobloxAIStudio: React.FC = () => {
       </div>
 
       {showSettings && (
-        <Modal title="Settings & API Key" onClose={() => setShowSettings(false)} styles={styles} t={t}>
-          <div style={styles.settingsGroup}>
-            <label style={styles.settingsLabel}>API Key (Required for AI)</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key..."
-              style={styles.input}
-            />
-            <div style={styles.settingsHint}>Your API key is securely stored in local session memory and never shared.</div>
-          </div>
-
+        <Modal title="Settings" onClose={() => setShowSettings(false)} styles={styles} t={t}>
           <div style={styles.settingsGroup}>
             <label style={styles.settingsLabel}>Theme Selection</label>
             <div style={styles.themeGrid}>
@@ -712,28 +736,51 @@ const RobloxAIStudio: React.FC = () => {
       )}
 
       {showAuth && (
-        <Modal title="Secure Sign In" onClose={() => setShowAuth(false)} styles={styles} t={t}>
-          <p style={styles.authIntro}>Sign in privately with your credentials.</p>
-          <label style={styles.settingsLabel}>Email Address</label>
-          <input
-            type="email"
-            value={authEmail}
-            onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder="you@example.com"
-            style={styles.input}
-          />
-          <label style={styles.settingsLabel}>Password</label>
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
-            placeholder="••••••••"
-            style={styles.input}
-          />
-          {authError && <div style={styles.errorText}>{authError}</div>}
-          <button type="button" style={styles.primaryBtn} onClick={handleAuthSubmit}>
-            Sign In Securely
-          </button>
+        <Modal title="Secure Sign In" onClose={() => { setShowAuth(false); setAuthStep("credentials"); }} styles={styles} t={t}>
+          {authStep === "credentials" ? (
+            <div>
+              <p style={styles.authIntro}>Sign in securely using email and password verification.</p>
+              <label style={styles.settingsLabel}>Email Address</label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="you@example.com"
+                style={styles.input}
+              />
+              <label style={styles.settingsLabel}>Password</label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="••••••••"
+                style={styles.input}
+              />
+              {authError && <div style={styles.errorText}>{authError}</div>}
+              <button type="button" style={styles.primaryBtn} onClick={handleRequestVerification} disabled={isSendingCode}>
+                {isSendingCode ? "Sending Code..." : "Continue & Send Verification Code"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p style={styles.authIntro}>We sent a verification code to <strong>{authEmail}</strong>. Enter it below to complete sign-in.</p>
+              <label style={styles.settingsLabel}>Verification Code</label>
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value)}
+                placeholder="123456"
+                style={styles.input}
+              />
+              {authError && <div style={styles.errorText}>{authError}</div>}
+              <button type="button" style={styles.primaryBtn} onClick={handleVerifyAndLogin}>
+                Verify & Sign In
+              </button>
+              <button type="button" style={{ ...styles.primaryBtn, background: "transparent", color: t.textDim, border: `1px solid ${t.border}`, marginTop: 8 }} onClick={() => setAuthStep("credentials")}>
+                Back to Credentials
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -824,7 +871,6 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     sendBtn: { width: 42, height: 42, borderRadius: 10, border: "none", background: t.accent, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
     settingsGroup: { marginBottom: 16 },
     settingsLabel: { fontSize: 12, fontWeight: 700, color: t.textDim, marginBottom: 8, display: "block" },
-    settingsHint: { fontSize: 11, color: t.textFaint, marginTop: 6 },
     themeGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 },
     themeCard: { padding: 8, borderRadius: 8, border: `1px solid ${t.border}`, background: t.bgPanel, cursor: "pointer", color: t.text },
     themeName: { fontSize: 12, fontWeight: 600 },
