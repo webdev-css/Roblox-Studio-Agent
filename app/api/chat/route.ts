@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     }
 
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/mrfirex79/RDM-ENGINE",
+      "https://router.huggingface.co/hf-inference/models/mrfirex79/RDM-ENGINE",
       {
         method: "POST",
         headers: {
@@ -49,4 +49,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-        }
+}
