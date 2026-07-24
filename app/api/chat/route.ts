@@ -1,49 +1,34 @@
-import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
-const ROBLOX_SYSTEM_INSTRUCTION = `
-You are an expert Roblox Luau Software Engineer and Game Developer assistant powered by RDM Engine.
-Rules:
-1. Output clean, efficient, and valid Luau syntax (use task.wait(), Players:GetPlayers(), vector math, etc.).
-2. Adhere strictly to Client-Server architecture:
-   - ServerScriptService / ServerStorage -> Server Scripts
-   - StarterPlayerScripts / StarterGui -> LocalScripts
-   - ReplicatedStorage -> ModuleScripts & RemoteEvents
-3. Always tell the user exactly WHERE to place each script in their Roblox Studio Explorer tree.
-`;
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { message, explorerData, model, userEmail } = await req.json();
+    const { prompt, systemPrompt } = await req.json();
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    const isOwner = userEmail === 'hossiani961@gmail.com';
-    if (isOwner) {
-      console.log(`[OWNER AUDIT LOG] Owner session active for query: "${message}"`);
+    if (!apiKey) {
+      return NextResponse.json({ error: "Server API key not configured." }, { status: 500 });
     }
 
-    let fullPrompt = message;
-    if (explorerData) {
-      fullPrompt = `[Roblox Explorer Hierarchy Context]:\n${explorerData}\n\n[User Request]: ${message}`;
-    }
-
-    // Updated to the current active model version
-    const targetModelName = 'gemini-3.5-flash';
-
-    const generativeModel = genAI.getGenerativeModel({
-      model: targetModelName,
-      systemInstruction: ROBLOX_SYSTEM_INSTRUCTION,
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          { role: "user", parts: [{ text: `${systemPrompt}\n\nUser request: ${prompt}` }] }
+        ]
+      })
     });
 
-    const result = await generativeModel.generateContent(fullPrompt);
-    const response = await result.response;
-    const replyText = response.text() || '';
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      return NextResponse.json({ error: errData.error?.message || "AI model error" }, { status: response.status });
+    }
 
-    return NextResponse.json({ success: true, reply: replyText });
-  } catch (err: any) {
-    console.error('API Error:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+
+    return NextResponse.json({ text });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
   }
        }
-   
