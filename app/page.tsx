@@ -9,7 +9,6 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
-  CSSProperties,
 } from "react";
 
 /* ============================================================================
@@ -176,10 +175,6 @@ const INITIAL_EXPLORER: ExplorerNode[] = [
   },
 ];
 
-const INITIAL_ADMIN_USERS: AdminUser[] = [
-  { id: "u1", email: ADMIN_EMAIL, role: "owner", status: "online", lastActive: "now" },
-];
-
 /* ============================================================================
  * UTILITIES
  * ==========================================================================*/
@@ -188,7 +183,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 /* Backend-routed AI call using server-side configuration */
 async function callServerAI(prompt: string, systemPrompt: string): Promise<{ text: string; code?: { language: string; content: string; filename: string } | null }> {
-  const response = await fetch("/api/generate", {
+  const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, systemPrompt }),
@@ -800,9 +795,9 @@ const RobloxAIStudio: React.FC = () => {
   );
 };
 
-const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; styles: ReturnType<typeof makeStyles>; t: ThemeTokens; wide?: boolean }> = ({ title, onClose, children, wide }) => (
+const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; styles: ReturnType<typeof makeStyles>; t: ThemeTokens; wide?: boolean }> = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-    <div style={{ width: "100%", maxWidth: wide ? 640 : 460, background: "#171a21", borderRadius: 16, padding: 20, border: "1px solid #3a404d", color: "#fff" }}>
+    <div style={{ width: "100%", maxWidth: 460, background: "#171a21", borderRadius: 16, padding: 20, border: "1px solid #3a404d", color: "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 15 }}>
         <h3 style={{ margin: 0 }}>{title}</h3>
         <button onClick={onClose} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer" }}>✕</button>
@@ -880,7 +875,7 @@ function makeStyles(t: ThemeTokens, isMobile: boolean) {
     authIntro: { color: t.textDim, marginBottom: 12 },
     errorText: { color: t.danger, fontSize: 12, marginBottom: 10 },
     successTitle: { fontSize: 18, fontWeight: 700 },
-  };
+  } as const;
 }
 
 export default RobloxAIStudio;
