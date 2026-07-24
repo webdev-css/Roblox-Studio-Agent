@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { HfInference } from "@huggingface/inference";
 
 export async function POST(req: Request) {
   try {
@@ -12,61 +13,38 @@ export async function POST(req: Request) {
       );
     }
 
-    const endpoint = "https://api-inference.huggingface.co/models/mrfirex79/RDM-ENGINE";
-    
-    let response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const hf = new HfInference(apiKey);
+
+    try {
+      const response = await hf.textGeneration({
+        model: "mrfirex79/RDM-ENGINE",
         inputs: "### Instruction:\n" + prompt + "\n\n### Response:\n",
         parameters: {
           max_new_tokens: 256,
           temperature: 0.7,
         },
-      }),
-    });
-
-    let data = await response.json();
-
-    // If the model is still loading on HF, wait a couple seconds and try once more automatically
-    if (data.error && data.error.includes("is currently loading")) {
-      const estimatedTime = (data.estimated_time || 20) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(estimatedTime, 10000)));
-      
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: "### Instruction:\n" + prompt + "\n\n### Response:\n",
-          parameters: {
-            max_new_tokens: 256,
-            temperature: 0.7,
-          },
-        }),
       });
-      data = await response.json();
+
+      return NextResponse.json({ 
+        success: true, 
+        response: response.generated_text || "No response generated" 
+      });
+
+    } catch (hfError: any) {
+      // Handle model loading state gracefully if it's spinning up
+      if (hfError.message && hfError.message.includes("loading")) {
+        return NextResponse.json(
+          { error: "Model is currently warming up on Hugging Face. Please try again in 30 seconds." },
+          { status: 503 }
+        );
+      }
+      throw hfError;
     }
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `Hugging Face API error: ${JSON.stringify(data)}` },
-        { status: response.status }
-      );
-    }
-
-    const reply = data[0]?.generated_text || data.generated_text || "No response generated";
-
-    return NextResponse.json({ success: true, response: reply });
   } catch (error: any) {
     return NextResponse.json(
-      { error: `Error processing request: ${error.message}` },
+      { error: `Error processing request: ${error.message || error}` },
       { status: 500 }
     );
   }
-  }
+      }
