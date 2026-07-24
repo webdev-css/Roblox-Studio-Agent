@@ -275,7 +275,7 @@ export default function Home() {
   // Recursive component to render Explorer tree with plus buttons
   const renderExplorerNodeUI = (node: ExplorerNode) => (
     <div key={node.id} style={{ marginLeft: '12px', marginTop: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', gap: '6px', padding: '4px 6px', borderRadius: '4px', backgroundColor: currentTheme.surfaceHover }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', padding: '4px 6px', borderRadius: '4px', backgroundColor: currentTheme.surfaceHover, transition: 'background 0.2s' }}>
         <span style={{ color: currentTheme.accent, fontWeight: 'bold' }}>📁 {node.name}</span>
         <span style={{ fontSize: '10px', color: currentTheme.textDim }}>[{node.type}]</span>
         <button 
@@ -295,13 +295,36 @@ export default function Home() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: currentTheme.bg, color: currentTheme.text, fontFamily: 'system-ui, -apple-system, sans-serif', transition: 'all 0.3s ease' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: currentTheme.bg, color: currentTheme.text, fontFamily: 'system-ui, -apple-system, sans-serif', transition: 'background 0.4s ease, color 0.4s ease' }}>
       
+      {/* Global CSS Keyframes for Epic Animations */}
+      <style jsx global>{`
+        @keyframes messageSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(12px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        @keyframes typingBounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-6px); opacity: 1; }
+        }
+        @keyframes auraGlow {
+          0% { filter: brightness(1); }
+          50% { filter: brightness(1.2); }
+          100% { filter: brightness(1); }
+        }
+      `}</style>
+
       {/* Dynamic Gemini-style Aura Background Accent Header Border */}
-      <div style={{ height: '3px', width: '100%', background: `linear-gradient(90deg, #3b82f6, ${currentTheme.accent}, #ec4899, #8b5cf6)`, boxShadow: `0 0 15px ${currentTheme.accentGlow}` }} />
+      <div style={{ height: '3px', width: '100%', background: `linear-gradient(90deg, #3b82f6, ${currentTheme.accent}, #ec4899, #8b5cf6)`, boxShadow: `0 0 15px ${currentTheme.accentGlow}`, animation: 'auraGlow 4s infinite' }} />
 
       {/* Navigation Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', backgroundColor: currentTheme.surface, borderBottom: `1px solid ${currentTheme.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', backgroundColor: currentTheme.surface, borderBottom: `1px solid ${currentTheme.border}`, transition: 'background 0.3s' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: currentTheme.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff', fontSize: '20px', boxShadow: `0 0 12px ${currentTheme.accentGlow}` }}>⚡</div>
           <div>
@@ -339,7 +362,7 @@ export default function Home() {
         
         {/* Desktop Sidebar / Explorer Tree */}
         {deviceMode === 'pc' && (
-          <div style={{ width: '320px', backgroundColor: currentTheme.surface, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: `1px solid ${currentTheme.border}` }}>
+          <div style={{ width: '320px', backgroundColor: currentTheme.surface, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: `1px solid ${currentTheme.border}`, transition: 'background 0.3s' }}>
             <div>
               <label style={{ fontSize: '11px', fontWeight: '800', color: currentTheme.textDim, display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Model Engine</label>
               <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} style={{ width: '100%', padding: '9px', backgroundColor: currentTheme.surfaceHover, color: currentTheme.text, border: `1px solid ${currentTheme.border}`, borderRadius: '8px', fontSize: '12px', outline: 'none', fontWeight: '600' }}>
@@ -363,7 +386,7 @@ export default function Home() {
 
         {/* Mobile Drawer Sidebar */}
         {deviceMode === 'mobile' && sidebarOpen && (
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '85%', maxWidth: '320px', height: '100%', backgroundColor: currentTheme.surface, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: `1px solid ${currentTheme.border}`, zIndex: 50, boxShadow: '5px 0 25px rgba(0,0,0,0.5)' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '85%', maxWidth: '320px', height: '100%', backgroundColor: currentTheme.surface, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderRight: `1px solid ${currentTheme.border}`, zIndex: 50, boxShadow: '5px 0 25px rgba(0,0,0,0.5)', animation: 'messageSlideIn 0.25s ease-out' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '15px', color: currentTheme.text }}>Studio Setup & Explorer</h3>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: currentTheme.textDim, border: 'none', fontSize: '16px', cursor: 'pointer' }}>✕</button>
@@ -399,22 +422,22 @@ export default function Home() {
             
             {/* Welcome Greeting Banner */}
             {messages.length === 0 && (
-              <div style={{ textAlign: 'center', marginTop: '40px', padding: '30px', backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', maxWidth: '600px', alignSelf: 'center', boxShadow: `0 8px 30px rgba(0,0,0,0.2)` }}>
-                <div style={{ fontSize: '32px', marginBottom: '10px' }}>👋</div>
+              <div style={{ textAlign: 'center', marginTop: '40px', padding: '30px', backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', maxWidth: '600px', alignSelf: 'center', boxShadow: `0 8px 30px rgba(0,0,0,0.2)`, animation: 'messageSlideIn 0.4s ease-out' }}>
+                <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
                 <h1 style={{ fontSize: '22px', color: currentTheme.text, fontWeight: '700', marginBottom: '8px' }}>Welcome to Roblox AI Studio</h1>
-                <p style={{ fontSize: '13px', color: currentTheme.textDim, lineHeight: '1.5' }}>
+                 <p style={{ fontSize: '13px', color: currentTheme.textDim, lineHeight: '1.5' }}>
                   Your premier workspace companion. Build advanced Luau scripts, structure game passes, or manage server architecture with custom AI assistance.
                 </p>
               </div>
             )}
 
             {messages.map((m, i) => (
-              <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%', animation: 'fadeIn 0.3s ease-in-out' }}>
+              <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%', animation: 'messageSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
                 <div style={{ backgroundColor: m.role === 'user' ? currentTheme.userBubble : currentTheme.aiBubble, padding: '14px 16px', borderRadius: '12px', fontSize: '14px', border: m.role === 'user' ? 'none' : `1px solid ${currentTheme.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
                   {m.role === 'user' ? (
                     <div style={{ color: '#fff' }}>{m.text}</div>
                   ) : (
-                     <ReactMarkdown
+                    <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
                         code({ className, children, ...props }) {
@@ -440,15 +463,21 @@ export default function Home() {
               </div>
             ))}
 
+            {/* Typing Indicator with Animated Bouncing Dots */}
             {loading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: currentTheme.accent, fontSize: '13px', fontStyle: 'italic', alignSelf: 'flex-start', padding: '8px 12px', backgroundColor: currentTheme.surface, borderRadius: '8px', border: `1px solid ${currentTheme.border}` }}>
-                <span style={{ animation: 'spin 1s linear infinite' }}>⚡</span> RDM Engine processing architecture & scripts...
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: currentTheme.accent, fontSize: '13px', alignSelf: 'flex-start', padding: '12px 16px', backgroundColor: currentTheme.surface, borderRadius: '12px', border: `1px solid ${currentTheme.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', animation: 'messageSlideIn 0.25s ease-out' }}>
+                <span style={{ fontWeight: '600', color: currentTheme.text }}>RDM Engine is typing</span>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <div style={{ width: '6px', height: '6px', backgroundColor: currentTheme.accent, borderRadius: '50%', animation: 'typingBounce 1.2s infinite ease-in-out 0s' }} />
+                  <div style={{ width: '6px', height: '6px', backgroundColor: currentTheme.accent, borderRadius: '50%', animation: 'typingBounce 1.2s infinite ease-in-out 0.2s' }} />
+                  <div style={{ width: '6px', height: '6px', backgroundColor: currentTheme.accent, borderRadius: '50%', animation: 'typingBounce 1.2s infinite ease-in-out 0.4s' }} />
+                </div>
               </div>
             )}
           </div>
 
           {/* Chat Input Bar */}
-          <div style={{ padding: '16px', backgroundColor: currentTheme.surface, borderTop: `1px solid ${currentTheme.border}` }}>
+          <div style={{ padding: '16px', backgroundColor: currentTheme.surface, borderTop: `1px solid ${currentTheme.border}`, transition: 'background 0.3s' }}>
             <div style={{ display: 'flex', backgroundColor: currentTheme.bg, border: `1px solid ${currentTheme.border}`, borderRadius: '12px', padding: '8px', gap: '8px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)' }}>
               <input 
                 type="text" 
@@ -458,7 +487,7 @@ export default function Home() {
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
                 style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: currentTheme.text, fontSize: '14px', outline: 'none', padding: '6px 10px' }} 
               />
-              <button onClick={sendMessage} style={{ backgroundColor: currentTheme.accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 18px', fontWeight: '700', cursor: 'pointer', boxShadow: `0 0 10px ${currentTheme.accentGlow}` }}>Send</button>
+              <button onClick={sendMessage} style={{ backgroundColor: currentTheme.accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 18px', fontWeight: '700', cursor: 'pointer', boxShadow: `0 0 10px ${currentTheme.accentGlow}`, transition: 'transform 0.1s' }}>Send</button>
             </div>
           </div>
         </div>
@@ -467,7 +496,7 @@ export default function Home() {
       {/* Admin Modal */}
       {showAdminModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: currentTheme.surface, border: '1px solid #f59e0b', borderRadius: '16px', padding: '24px', width: '460px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ backgroundColor: currentTheme.surface, border: '1px solid #f59e0b', borderRadius: '16px', padding: '24px', width: '460px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', animation: 'messageSlideIn 0.3s ease-out' }}>
             <h3 style={{ margin: 0, fontSize: '18px', color: '#fbbf24' }}>👑 Owner Admin Dashboard</h3>
             <p style={{ fontSize: '12px', color: currentTheme.textDim, margin: 0 }}>Monitor active website sessions, privileges, and ban unauthorized users.</p>
             
@@ -493,7 +522,7 @@ export default function Home() {
       {/* Settings & Theme Modal */}
       {showSettings && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', padding: '24px', width: '380px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', padding: '24px', width: '380px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', animation: 'messageSlideIn 0.3s ease-out' }}>
             <h3 style={{ margin: 0, fontSize: '18px', color: currentTheme.text }}>⚙️ Studio Settings & Themes</h3>
             
             <div>
@@ -530,7 +559,7 @@ export default function Home() {
       {/* Auth Modal */}
       {showAuthModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', padding: '24px', width: '340px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ backgroundColor: currentTheme.surface, border: `1px solid ${currentTheme.border}`, borderRadius: '16px', padding: '24px', width: '340px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', animation: 'messageSlideIn 0.3s ease-out' }}>
             <h3 style={{ margin: 0, fontSize: '18px', color: currentTheme.text }}>
               {codeSent ? '🔑 Enter Verification Code' : 'Sign In / Sign Up'}
             </h3>
@@ -599,6 +628,4 @@ export default function Home() {
 
     </div>
   );
-      }
-        
-        
+}
