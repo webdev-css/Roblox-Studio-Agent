@@ -1,11 +1,9 @@
+// app/api/send-code/route.ts (or app/api/auth/send-code/route.ts)
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { verificationCodes } from "../store"; // <-- Import it from the shared file
 
-// Initialize Resend with the server-side environment variable from Render
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Shared in-memory verification code store (for production, use Redis or a database)
-export const verificationCodes = new Map<string, string>();
 
 export async function POST(req: Request) {
   try {
@@ -15,11 +13,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    // Generate a secure 6-digit verification code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Use the imported map
     verificationCodes.set(email, code);
 
-    // Send the code through Resend using your backend credentials
     const { data, error } = await resend.emails.send({
       from: "Roblox AI Studio <onboarding@resend.dev>",
       to: [email],
@@ -31,7 +29,6 @@ export async function POST(req: Request) {
           <div style="font-size: 24px; font-weight: bold; background: #f4f4f4; padding: 10px 20px; display: inline-block; border-radius: 6px; letter-spacing: 2px;">
             ${code}
           </div>
-          <p style="margin-top: 20px; font-size: 12px; color: #777;">If you did not request this, please ignore this email.</p>
         </div>
       `,
     });
@@ -44,4 +41,4 @@ export async function POST(req: Request) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to send code" }, { status: 500 });
   }
-              }
+}
