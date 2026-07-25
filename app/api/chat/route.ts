@@ -3,31 +3,33 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const { prompt } = await req.json();
-    const apiKey = process.env.HF_TOKEN;
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "HF_TOKEN environment variable is missing on server." },
+        { error: "OPENROUTER_API_KEY environment variable is missing on server." },
         { status: 500 }
       );
     }
 
-    // Target a standard compatible base model, and pass your custom LoRA adapter inside parameters
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-7B-Instruct",
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          "HTTP-Referer": "https://your-app-name.onrender.com", // Optional: your Render app URL
+          "X-Title": "My AI App", // Optional: app name for OpenRouter leaderboards
         },
         body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            adapter_id: "mrfirex79/RDM-ENGINE",
-            max_new_tokens: 256,
-            temperature: 0.7,
-          },
+          model: "openrouter/auto", // Automatically routes requests to the best available model
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
         }),
       }
     );
@@ -41,7 +43,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const reply = data[0]?.generated_text || data.generated_text || "No response generated";
+    const reply = data.choices?.[0]?.message?.content || "No response generated";
 
     return NextResponse.json({ success: true, response: reply });
   } catch (error: any) {
@@ -50,4 +52,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+          }
