@@ -1,951 +1,1785 @@
-"use client";
+// App.jsx — RDM-ENGINE Chat Interface
+// A hyper-polished, feature-rich UI for an advanced AI engine.
+// ARCHITECTURE NOTE: This file contains ONLY the UI, state, layout & feature layer.
+// No LLM API calls live here — the host app injects the engine via `onSendToEngine`.
+// Identity, model routing, and Pro entitlements are surfaced but the "brain" is external.
 
-import React, { useState, useEffect, useRef, useCallback, useMemo, CSSProperties } from "react";
-
-/* ============================================================================
-   TYPES & INTERFACES
-   ============================================================================ */
-
-type ThemeName = "dark" | "midnight" | "cyberpunk";
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "ai";
-  text: string;
-  createdAt: number;
-  code?: {
-    language: string;
-    filename: string;
-    content: string;
-  } | null;
-  images?: string[] | null;
-}
-
-interface ChatSession {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  createdAt: number;
-}
-
-interface ModelOption {
-  id: string;
-  name: string;
-  desc: string;
-  provider: string;
-  badge?: string;
-}
-
-interface ExplorerNode {
-  id: string;
-  name: string;
-  type: "folder" | "script" | "localscript" | "module" | "gui" | "sound";
-  children?: ExplorerNode[];
-}
-
-interface AdminUser {
-  email: string;
-  role: "Owner" | "Admin" | "Moderator";
-  joinedDate: string;
-  status: "Active" | "Banned";
-}
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 /* ============================================================================
-   CONSTANTS & DATA
+   CONSTANTS / CONFIG
    ============================================================================ */
 
-const MODELS: ModelOption[] = [
-  { id: "rdm-2.2", name: "RDM-2.2 (Ultra)", desc: "Lightning fast Luau and GUI generator", provider: "OpenRouter / Claude-3.5", badge: "Default" },
-  { id: "rdm-2.1-pro", name: "RDM-2.1 Pro", desc: "Advanced architectural reasoning & complex state systems", provider: "OpenRouter / Claude-3.5" },
-  { id: "rdm-1.1-mythical", name: "RDM-1.1 Mythical", desc: "Legacy optimized model for specialized Roblox structures", provider: "OpenRouter / GPT-4o" },
-];
+const IDENTITY = {
+  name: "RDM-ENGINE",
+  tagline: "Made & developed by RDM-ENGINE",
+  systemBase:
+    "You are RDM-ENGINE, an advanced AI assistant. You were made and developed by RDM-ENGINE. " +
+    "Always identify yourself as being created by RDM-ENGINE. Be helpful, precise, and thoughtful.",
+};
 
-const INITIAL_EXPLORER_TREE: ExplorerNode[] = [
+const MODELS = [
   {
-    id: "ws",
-    name: "Workspace",
-    type: "folder",
-    children: [
-      { id: "map", name: "NinjaTemple_Map", type: "folder" },
-      { id: "spawn", name: "SpawnLocation", type: "folder" },
-    ],
+    id: "rdm-2.1-common",
+    label: "RDM 2.1 COMMON",
+    desc: "Fast and reliable",
+    pro: false,
   },
   {
-    id: "ss",
-    name: "ServerScriptService",
-    type: "folder",
-    children: [
-      { id: "ss_handler", name: "DataStoreHandler.server.lua", type: "script" },
-      { id: "ss_combat", name: "CombatManager.server.lua", type: "script" },
-    ],
+    id: "rdm-2.2-common",
+    label: "RDM 2.2 COMMON",
+    desc: "Super Fast & Depth Thinking",
+    pro: false,
   },
   {
-    id: "sis",
-    name: "StarterGui",
-    type: "folder",
-    children: [
-      {
-        id: "gui_main",
-        name: "MainHUD",
-        type: "gui",
-        children: [
-          { id: "gui_shop", name: "ShopFrame", type: "gui" },
-          { id: "gui_stats", name: "PlayerStats", type: "gui" },
-        ],
-      },
-    ],
+    id: "rdm-2.3-pro",
+    label: "RDM 2.3 PRO",
+    desc: "Super Deep Thinking, Codes Faster",
+    pro: false, // selectable, no visible "Pro" tag on selector per spec
   },
   {
-    id: "sps",
-    name: "StarterPlayerScripts",
-    type: "folder",
-    children: [
-      { id: "sps_client", name: "ClientController.client.lua", type: "localscript" },
-      { id: "sps_fly", name: "FlySystem.client.lua", type: "localscript" },
-    ],
+    id: "rdm-2.4-xor",
+    label: "RDM 2.4 XOR",
+    desc: "Ultra Thinking, Codes Ultra Fast, Good At GUIs",
+    pro: true, // restricted to Pro users
   },
 ];
 
-const DEFAULT_ADMINS: AdminUser[] = [
-  { email: "hossiani961@gmail.com", role: "Owner", joinedDate: "2026-01-10", status: "Active" },
-  { email: "dev_roblox99@gmail.com", role: "Admin", joinedDate: "2026-02-14", status: "Active" },
-  { email: "scripter_pro@roblox.net", role: "Moderator", joinedDate: "2026-03-01", status: "Active" },
-];
+const LS_KEYS = {
+  users: "rdm.users.v1",
+  session: "rdm.session.v1",
+  chats: "rdm.chats.v1",
+  activeChat: "rdm.activeChat.v1",
+  draftPrefix: "rdm.draft.",
+  settings: "rdm.settings.v1",
+};
 
-const THEMES: Record<ThemeName, { bg: string; surface: string; border: string; text: string; textMuted: string; primary: string; hover: string; codeBg: string }> = {
-  dark: {
-    bg: "#0d1117",
-    surface: "#161b22",
-    border: "#30363d",
-    text: "#e6edf3",
-    textMuted: "#8b949e",
-    primary: "#238636",
-    hover: "#2ea043",
-    codeBg: "#010409",
+const DEFAULT_SETTINGS = {
+  theme: "midnight", // midnight | aurora | mono
+  rainbow: true,
+  sound: true,
+  animations: true,
+  systemPrompt: IDENTITY.systemBase,
+  temperature: 0.7,
+  model: "rdm-2.1-common",
+};
+
+/* ============================================================================
+   LOCALSTORAGE HELPERS (rock-solid, guarded)
+   ============================================================================ */
+
+const store = {
+  get(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
   },
-  midnight: {
-    bg: "#090a0f",
-    surface: "#121520",
-    border: "#202538",
-    text: "#f0f6fc",
-    textMuted: "#9198a1",
-    primary: "#6366f1",
-    hover: "#4f46e5",
-    codeBg: "#05060a",
+  set(key, val) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch {
+      /* quota / privacy mode — fail silently */
+    }
   },
-  cyberpunk: {
-    bg: "#0b0514",
-    surface: "#150a24",
-    border: "#3b1c5e",
-    text: "#fdf4ff",
-    textMuted: "#c084fc",
-    primary: "#ec4899",
-    hover: "#db2777",
-    codeBg: "#05020a",
+  raw(key, fallback = "") {
+    try {
+      return localStorage.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  setRaw(key, val) {
+    try {
+      localStorage.setItem(key, val);
+    } catch {}
+  },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
   },
 };
 
 /* ============================================================================
-   UTILITY HELPERS
+   LIGHTWEIGHT PASSWORD HASHING (client-side, non-cryptographic salt+hash)
+   NOTE: This is a UI-layer credential store. Real auth should be server-side.
    ============================================================================ */
 
-function uid(): string {
-  return Math.random().toString(36).substring(2, 9);
+async function hashPassword(password, salt) {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${salt}::${password}`);
+  if (window.crypto?.subtle) {
+    const buf = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  // Fallback simple hash
+  let h = 0;
+  const s = `${salt}::${password}`;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return String(h >>> 0);
 }
 
-function detectIntent(text: string): "image" | "script" | "text" {
-  const lower = text.toLowerCase();
-  if (lower.includes("gui") || lower.includes("image") || lower.includes("icon") || lower.includes("gamepass") || lower.includes("ui") || lower.includes("design")) {
-    if (lower.includes("script") || lower.includes("code") || lower.includes("function")) return "script";
-    return "image";
-  }
-  if (lower.includes("script") || lower.includes("code") || lower.includes("function") || lower.includes("lua") || lower.includes("make a") || lower.includes("create")) {
-    return "script";
-  }
-  return "text";
-}
-
-function generateImages(prompt: string): string[] {
-  const seed = encodeURIComponent(prompt.slice(0, 20));
-  return [
-    `https://picsum.photos/seed/${seed}1/400/300`,
-    `https://picsum.photos/seed/${seed}2/400/300`,
-  ];
-}
-
-async function callAIApi(prompt: string, modelId: string, systemInstructions: string): Promise<string> {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ prompt, modelId, systemInstructions })
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "Response not generated. Please try again.");
-  }
-
-  return data.content;
+function makeSalt() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 /* ============================================================================
-   SUB-COMPONENTS
+   MARKDOWN → HTML (minimal, safe-ish renderer for chat bubbles)
    ============================================================================ */
 
-function Icon({ name, size = 18, color }: { name: string; size?: number; color?: string }) {
-  const commonProps = { width: size, height: size, fill: "none", stroke: color || "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  switch (name) {
-    case "menu":
-      return <svg {...commonProps} viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>;
-    case "plus":
-      return <svg {...commonProps} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
-    case "settings":
-      return <svg {...commonProps} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
-    case "send":
-      return <svg {...commonProps} viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
-    case "copy":
-      return <svg {...commonProps} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
-    case "check":
-      return <svg {...commonProps} viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>;
-    case "shield":
-      return <svg {...commonProps} viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-    case "folder":
-      return <svg {...commonProps} viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
-    case "file":
-      return <svg {...commonProps} viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>;
-    case "user":
-      return <svg {...commonProps} viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
-    case "trash":
-      return <svg {...commonProps} viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
-    case "chevron-right":
-      return <svg {...commonProps} viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>;
-    case "chevron-down":
-      return <svg {...commonProps} viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>;
-    default:
-      return <svg {...commonProps} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>;
-  }
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function Modal({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  if (!isOpen) return null;
+function renderMarkdown(md) {
+  if (!md) return "";
+  // Extract code blocks first
+  const codeBlocks = [];
+  let text = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      `<pre class="rdm-code"><div class="rdm-code-lang">${
+        escapeHtml(lang) || "code"
+      }</div><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`
+    );
+    return `\u0000CODE${idx}\u0000`;
+  });
+
+  text = escapeHtml(text);
+
+  // Headers
+  text = text.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+  text = text.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+  text = text.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+  // Bold / italic
+  text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  text = text.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  // Inline code
+  text = text.replace(/`([^`]+?)`/g, '<code class="rdm-inline">$1</code>');
+  // Bullet lists
+  text = text.replace(/^(?:- |\* )(.*)$/gm, "<li>$1</li>");
+  text = text.replace(/(<li>[\s\S]*?<\/li>)/g, (m) =>
+    m.includes("</li>\n") || true ? `<ul>${m.replace(/\n/g, "")}</ul>` : m
+  );
+  // Line breaks
+  text = text.replace(/\n/g, "<br/>");
+
+  // Restore code blocks
+  text = text.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => codeBlocks[+i]);
+  return text;
+}
+
+/* ============================================================================
+   AUTO CHAT TITLE GENERATOR
+   ============================================================================ */
+
+function generateChatTitle(firstPrompt) {
+  if (!firstPrompt) return "New Chat";
+  const cleaned = firstPrompt
+    .replace(/[#*`_>~-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const stop = new Set([
+    "the","a","an","and","or","but","to","of","in","on","for","with",
+    "how","what","why","can","you","please","i","me","my","is","are","do",
+  ]);
+  const words = cleaned.split(" ").filter((w) => w.length > 1);
+  const keyWords = words.filter((w) => !stop.has(w.toLowerCase())).slice(0, 5);
+  const title = (keyWords.length ? keyWords : words.slice(0, 5)).join(" ");
+  const finalTitle = title.length > 42 ? title.slice(0, 42) + "…" : title;
+  return finalTitle
+    ? finalTitle.charAt(0).toUpperCase() + finalTitle.slice(1)
+    : "New Chat";
+}
+
+/* ============================================================================
+   SOUND FX (tiny WebAudio blips, respects settings)
+   ============================================================================ */
+
+function playBlip(freq = 660, dur = 0.08, enabled = true) {
+  if (!enabled) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = freq;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + dur);
+    setTimeout(() => ctx.close(), (dur + 0.05) * 1000);
+  } catch {}
+}
+
+/* ============================================================================
+   ICONS (inline SVG, no deps)
+   ============================================================================ */
+
+const Icon = ({ path, size = 18, className = "" }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    {path}
+  </svg>
+);
+
+const Icons = {
+  bold: <path d="M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z" />,
+  italic: (
+    <>
+      <line x1="19" y1="4" x2="10" y2="4" />
+      <line x1="14" y1="20" x2="5" y2="20" />
+      <line x1="15" y1="4" x2="9" y2="20" />
+    </>
+  ),
+  header: <path d="M4 12h16M4 6h16M4 18h10" />,
+  code: (
+    <>
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </>
+  ),
+  list: (
+    <>
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <circle cx="3.5" cy="6" r="1" />
+      <circle cx="3.5" cy="12" r="1" />
+      <circle cx="3.5" cy="18" r="1" />
+    </>
+  ),
+  quote: <path d="M3 21c3-3 3-6 3-9V6H3v6h3M14 21c3-3 3-6 3-9V6h-3v6h3" />,
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </>
+  ),
+  send: <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </>
+  ),
+  menu: <path d="M3 12h18M3 6h18M3 18h18" />,
+  x: <path d="M18 6L6 18M6 6l12 12" />,
+  trash: (
+    <>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </>
+  ),
+  crown: <path d="M2 20h20M4 16l2-9 4 4 2-6 2 6 4-4 2 9z" />,
+  chevron: <polyline points="6 9 12 15 18 9" />,
+  logout: (
+    <>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </>
+  ),
+  sparkle: <path d="M12 2l2 7 7 2-7 2-2 7-2-7-7-2 7-2z" />,
+  edit: (
+    <>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+    </>
+  ),
+  check: <polyline points="20 6 9 17 4 12" />,
+};
+
+/* ============================================================================
+   AUTH SCREEN
+   ============================================================================ */
+
+function AuthScreen({ onAuth, rainbow }) {
+  const [mode, setMode] = useState("login"); // login | register
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const em = email.trim().toLowerCase();
+    if (!em || !password) return setError("Email and password are required.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em))
+      return setError("Please enter a valid email address.");
+
+    setBusy(true);
+    try {
+      const users = store.get(LS_KEYS.users, {});
+      if (mode === "register") {
+        if (!name.trim()) return setError("Please enter your name.");
+        if (password.length < 6)
+          return setError("Password must be at least 6 characters.");
+        if (password !== confirm)
+          return setError("Passwords do not match.");
+        if (users[em]) return setError("An account with this email exists.");
+        const salt = makeSalt();
+        const hash = await hashPassword(password, salt);
+        users[em] = { name: name.trim(), email: em, salt, hash, pro: false };
+        store.set(LS_KEYS.users, users);
+        onAuth({ name: name.trim(), email: em, pro: false });
+      } else {
+        const rec = users[em];
+        if (!rec) return setError("No account found. Try registering.");
+        const hash = await hashPassword(password, rec.salt);
+        if (hash !== rec.hash) return setError("Incorrect password.");
+        onAuth({ name: rec.name, email: rec.email, pro: !!rec.pro });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div style={modalStyles.overlay} onClick={onClose}>
-      <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={modalStyles.header}>
-          <h3 style={modalStyles.title}>{title}</h3>
-          <button style={modalStyles.closeBtn} onClick={onClose}>&times;</button>
+    <div className="rdm-auth-wrap">
+      <div className="rdm-auth-bg" />
+      <form className="rdm-auth-card glass" onSubmit={submit}>
+        <div className="rdm-auth-logo">
+          <div className={`rdm-logo-orb ${rainbow ? "rainbow-orb" : ""}`}>
+            <Icon path={Icons.sparkle} size={26} />
+          </div>
+          <h1 className={rainbow ? "rainbow-text" : ""}>RDM-ENGINE</h1>
+          <p className="rdm-muted">{IDENTITY.tagline}</p>
         </div>
-        <div style={modalStyles.body}>{children}</div>
+
+        <div className="rdm-tab-switch">
+          <button
+            type="button"
+            className={mode === "login" ? "active" : ""}
+            onClick={() => {
+              setMode("login");
+              setError("");
+            }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={mode === "register" ? "active" : ""}
+            onClick={() => {
+              setMode("register");
+              setError("");
+            }}
+          >
+            Register
+          </button>
+        </div>
+
+        {mode === "register" && (
+          <input
+            className="rdm-input"
+            placeholder="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+          />
+        )}
+        <input
+          className="rdm-input"
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+        />
+        <input
+          className="rdm-input"
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+        />
+        {mode === "register" && (
+          <input
+            className="rdm-input"
+            type="password"
+            placeholder="Confirm password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+          />
+        )}
+
+        {error && <div className="rdm-error">{error}</div>}
+
+        <button
+          className={`rdm-btn-primary ${rainbow ? "rainbow-btn" : ""}`}
+          disabled={busy}
+        >
+          {busy ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+        </button>
+
+        <p className="rdm-muted rdm-fineprint">
+          Your credentials are stored securely on this device only.
+        </p>
+      </form>
+    </div>
+  );
+}
+
+/* ============================================================================
+   MODEL SELECTOR (header dropdown)
+   ============================================================================ */
+
+function ModelSelector({ current, onChange, isPro, onNeedPro, rainbow }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const model = MODELS.find((m) => m.id === current) || MODELS[0];
+
+  useEffect(() => {
+    const h = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const pick = (m) => {
+    if (m.pro && !isPro) {
+      setOpen(false);
+      onNeedPro();
+      return;
+    }
+    onChange(m.id);
+    setOpen(false);
+  };
+
+  return (
+    <div className="rdm-model-select" ref={ref}>
+      <button
+        className={`rdm-model-trigger ${rainbow ? "rainbow-border" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="rdm-model-dot" />
+        <span className="rdm-model-name">{model.label}</span>
+        <Icon path={Icons.chevron} size={16} className={open ? "rot" : ""} />
+      </button>
+      {open && (
+        <div className="rdm-model-menu glass fade-in-down">
+          {MODELS.map((m) => (
+            <button
+              key={m.id}
+              className={`rdm-model-item ${m.id === current ? "sel" : ""}`}
+              onClick={() => pick(m)}
+            >
+              <div className="rdm-model-item-main">
+                <span className="rdm-model-item-label">{m.label}</span>
+                {m.pro && !isPro && (
+                  <span className="rdm-lock-mini">🔒</span>
+                )}
+              </div>
+              <span className="rdm-model-item-desc">{m.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+   PRO UPGRADE MODAL
+   ============================================================================ */
+
+function ProModal({ open, onClose, user, onUpgrade, rainbow }) {
+  if (!open) return null;
+  const loggedIn = !!user;
+
+  const features = [
+    { icon: "⚡", title: "25% More Usage", desc: "Higher limits so your flow never stops." },
+    { icon: "🧬", title: "Unlock RDM 2.4 XOR", desc: "Ultra thinking, ultra-fast code, GUI mastery." },
+    { icon: "🚀", title: "Faster, Reliable Coding", desc: "Priority routing tuned for developers." },
+    { icon: "🎁", title: "Early Feature Previews", desc: "Upcoming updates before anyone else." },
+  ];
+
+  return (
+    <div className="rdm-modal-overlay fade-in" onClick={onClose}>
+      <div
+        className={`rdm-pro-card glass slide-up ${rainbow ? "rainbow-border" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="rdm-modal-x" onClick={onClose} aria-label="Close">
+          <Icon path={Icons.x} size={20} />
+        </button>
+
+        <div className="rdm-pro-hero">
+          <div className={`rdm-crown ${rainbow ? "rainbow-text" : ""}`}>
+            <Icon path={Icons.crown} size={40} />
+          </div>
+          <h2 className={rainbow ? "rainbow-text" : ""}>About RDM Pro</h2>
+          <p className="rdm-muted">
+            Supercharge your RDM-ENGINE experience.
+          </p>
+          <div className="rdm-discount-badge pulse">8% OFF — Limited Time</div>
+        </div>
+
+        <div className="rdm-pro-grid">
+          {features.map((f) => (
+            <div className="rdm-pro-feature" key={f.title}>
+              <div className="rdm-pro-feature-icon">{f.icon}</div>
+              <div>
+                <div className="rdm-pro-feature-title">{f.title}</div>
+                <div className="rdm-pro-feature-desc">{f.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rdm-pro-updates">
+          <strong>Upcoming & Discounts</strong>
+          <p className="rdm-muted">
+            Preview upcoming features and updates, plus exclusive{" "}
+            <em>weekend</em> and <em>annual</em> discounts for Pro members.
+          </p>
+        </div>
+
+        {!loggedIn ? (
+          <div className="rdm-pro-loginnote">
+            Purchasing Pro requires an active login. Please sign in first.
+          </div>
+        ) : user.pro ? (
+          <div className="rdm-pro-active">✓ You already have RDM Pro. Enjoy!</div>
+        ) : (
+          <button
+            className={`rdm-btn-primary rdm-pro-buy ${rainbow ? "rainbow-btn" : ""}`}
+            onClick={onUpgrade}
+          >
+            <Icon path={Icons.crown} size={18} /> Buy Pro! (8% Off)
+          </button>
+        )}
+
+        <p className="rdm-muted rdm-fineprint" style={{ marginTop: 10 }}>
+          Purchasing requires an active user login.
+        </p>
       </div>
     </div>
   );
 }
 
-const modalStyles = {
-  overlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" },
-  modal: { width: "90%", maxWidth: "550px", backgroundColor: "#161b22", border: "1px solid #30363d", borderRadius: "12px", boxShadow: "0 16px 32px rgba(0,0,0,0.5)", overflow: "hidden", color: "#e6edf3" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #30363d" },
-  title: { margin: 0, fontSize: "18px", fontWeight: 600 },
-  closeBtn: { background: "none", border: "none", color: "#8b949e", fontSize: "24px", cursor: "pointer", padding: 0 },
-  body: { padding: "20px", maxHeight: "75vh", overflowY: "auto" as const },
-};
-
 /* ============================================================================
-   MAIN COMPONENT
+   SETTINGS PANEL (Studio Settings + System Prompt + Pro entry)
    ============================================================================ */
 
-export default function RobloxAIStudio() {
-  // Theme & Layout State
-  const [theme, setTheme] = useState<ThemeName>("dark");
-  const t = THEMES[theme];
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<"chat" | "explorer" | "admin">("chat");
+function SettingsPanel({
+  open,
+  onClose,
+  settings,
+  setSettings,
+  onOpenPro,
+  user,
+  rainbow,
+}) {
+  const [tab, setTab] = useState("studio");
+  if (!open) return null;
 
-  // Chat Sessions State
-  const [sessions, setSessions] = useState<ChatSession[]>([
-    {
-      id: "session-1",
-      title: "Ninja Shop GUI & Script",
-      createdAt: Date.now(),
-      messages: [
-        {
-          id: "m1",
-          role: "user",
-          text: "Make a script if I click a GUI a shop will open and add fly script for my game",
-          createdAt: Date.now() - 10000,
-        },
-        {
-          id: "m2",
-          role: "ai",
-          text: "Here is your complete solution for the Ninja Shop GUI toggle and the local Fly Script.",
-          createdAt: Date.now() - 5000,
-          code: {
-            language: "lua",
-            filename: "ShopAndFlyController.client.lua",
-            content: `-- Shop Toggle & Fly Script for Roblox Client
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+  const update = (patch) => setSettings((s) => ({ ...s, ...patch }));
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+  return (
+    <div className="rdm-modal-overlay fade-in" onClick={onClose}>
+      <div
+        className="rdm-settings-card glass slide-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="rdm-settings-head">
+          <h2>Settings</h2>
+          <button className="rdm-icon-btn" onClick={onClose} aria-label="Close">
+            <Icon path={Icons.x} size={20} />
+          </button>
+        </div>
 
--- Create Shop GUI dynamically if not exists
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "NinjaShopHUD"
-screenGui.Parent = playerGui
+        <div className="rdm-settings-tabs">
+          {[
+            ["studio", "Studio"],
+            ["chat", "Chat Adjuster"],
+            ["pro", "RDM Pro"],
+          ].map(([k, l]) => (
+            <button
+              key={k}
+              className={tab === k ? "active" : ""}
+              onClick={() => setTab(k)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
 
-local openBtn = Instance.new("TextButton")
-openBtn.Size = UDim2.new(0, 140, 0, 50)
-openBtn.Position = UDim2.new(0, 20, 0, 100)
-openBtn.BackgroundColor3 = Color3.fromRGB(35, 134, 54)
-openBtn.Text = "Toggle Shop"
-openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-openBtn.TextSize = 16
-openBtn.Font = Enum.Font.GothamBold
-openBtn.Parent = screenGui
+        <div className="rdm-settings-body">
+          {tab === "studio" && (
+            <div className="fade-in">
+              <label className="rdm-field-label">Theme</label>
+              <div className="rdm-theme-row">
+                {["midnight", "aurora", "mono"].map((t) => (
+                  <button
+                    key={t}
+                    className={`rdm-theme-chip ${t} ${
+                      settings.theme === t ? "sel" : ""
+                    }`}
+                    onClick={() => update({ theme: t })}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
 
-local shopFrame = Instance.new("Frame")
-shopFrame.Size = UDim2.new(0, 350, 0, 400)
-shopFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
-shopFrame.BackgroundColor3 = Color3.fromRGB(22, 27, 34)
-shopFrame.Visible = false
-shopFrame.Parent = screenGui
+              <Toggle
+                label="Rainbow Effects"
+                desc="Animated gradients & glowing accents"
+                on={settings.rainbow}
+                onToggle={() => update({ rainbow: !settings.rainbow })}
+              />
+              <Toggle
+                label="Sound FX"
+                desc="Subtle audio on send/receive"
+                on={settings.sound}
+                onToggle={() => update({ sound: !settings.sound })}
+              />
+              <Toggle
+                label="Animations"
+                desc="Transitions & micro-interactions"
+                on={settings.animations}
+                onToggle={() => update({ animations: !settings.animations })}
+              />
+            </div>
+          )}
 
-openBtn.MouseButton1Click:Connect(function()
-    shopFrame.Visible = not shopFrame.Visible
-end)
+          {tab === "chat" && (
+            <div className="fade-in">
+              <label className="rdm-field-label">
+                System Instructions (Chat Adjuster)
+              </label>
+              <textarea
+                className="rdm-textarea"
+                rows={6}
+                value={settings.systemPrompt}
+                onChange={(e) => update({ systemPrompt: e.target.value })}
+              />
+              <p className="rdm-muted rdm-fineprint">
+                Defines RDM-ENGINE's behavior. Identity as RDM-ENGINE is always
+                preserved.
+              </p>
 
--- Fly Controller Integration
-local flying = false
-local speed = 50
-local torso = nil
+              <label className="rdm-field-label" style={{ marginTop: 16 }}>
+                Creativity: {settings.temperature.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={settings.temperature}
+                onChange={(e) =>
+                  update({ temperature: parseFloat(e.target.value) })
+                }
+                className="rdm-range"
+              />
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F then
-        flying = not flying
-        print("Fly mode: " .. tostring(flying))
-    end
-end)`
-          },
-          images: [
-            "https://picsum.photos/seed/ninjashop1/400/300",
-            "https://picsum.photos/seed/ninjashop2/400/300"
-          ]
-        }
-      ]
-    }
-  ]);
-  const [activeSessionId, setActiveSessionId] = useState<string>("session-1");
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+              <button
+                className="rdm-btn-ghost"
+                style={{ marginTop: 14 }}
+                onClick={() => update({ systemPrompt: IDENTITY.systemBase })}
+              >
+                Reset to Default
+              </button>
+            </div>
+          )}
 
-  // Model & Settings State
-  const [modelId, setModelId] = useState<string>("rdm-2.2");
-  
-  // DEFAULT GLOBAL SYSTEM INSTRUCTION FOR EVERY VISITOR:
-  const [systemInstructions, setSystemInstructions] = useState<string>(
-    "You are Roblox AI Studio, an elite Roblox Luau developer and UI/UX expert. If anyone asks who created or made you, you must state that you were built by Google. Write clean, highly performant Roblox scripts, modules, and GUI solutions."
+          {tab === "pro" && (
+            <div className="fade-in rdm-settings-pro">
+              <div className={`rdm-crown ${rainbow ? "rainbow-text" : ""}`}>
+                <Icon path={Icons.crown} size={34} />
+              </div>
+              <h3>{user?.pro ? "RDM Pro Active" : "Upgrade to RDM Pro"}</h3>
+              <p className="rdm-muted">
+                25% more usage, the XOR model, faster coding, and early feature
+                previews.
+              </p>
+              <button
+                className={`rdm-btn-primary ${rainbow ? "rainbow-btn" : ""}`}
+                onClick={() => {
+                  onClose();
+                  onOpenPro();
+                }}
+              >
+                <Icon path={Icons.crown} size={16} /> Buy Pro! (8% Off)
+              </button>
+              <button className="rdm-link-btn" onClick={() => {
+                onClose();
+                onOpenPro();
+              }}>
+                Click to see the usage.
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
+}
+
+function Toggle({ label, desc, on, onToggle }) {
+  return (
+    <div className="rdm-toggle-row" onClick={onToggle}>
+      <div>
+        <div className="rdm-toggle-label">{label}</div>
+        {desc && <div className="rdm-toggle-desc">{desc}</div>}
+      </div>
+      <div className={`rdm-switch ${on ? "on" : ""}`}>
+        <div className="rdm-switch-knob" />
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   FORMATTING TOOLBAR
+   ============================================================================ */
+
+function FormatToolbar({ onFormat, rainbow }) {
+  const tools = [
+    { key: "bold", icon: Icons.bold, title: "Bold", wrap: ["**", "**"] },
+    {
+      key: "header",
+      icon: Icons.header,
+      title: "Huge Bold (Header)",
+      wrap: ["# ", ""],
+      line: true,
+    },
+    { key: "italic", icon: Icons.italic, title: "Italic", wrap: ["*", "*"] },
+    {
+      key: "code",
+      icon: Icons.code,
+      title: "Code Block",
+      wrap: ["\n```\n", "\n```\n"],
+    },
+    {
+      key: "list",
+      icon: Icons.list,
+      title: "Bullet List",
+      wrap: ["- ", ""],
+      line: true,
+    },
+    {
+      key: "quote",
+      icon: Icons.quote,
+      title: "Quote",
+      wrap: ["> ", ""],
+      line: true,
+    },
+  ];
+  return (
+    <div className={`rdm-toolbar ${rainbow ? "rainbow-border-soft" : ""}`}>
+      {tools.map((t) => (
+        <button
+          key={t.key}
+          className="rdm-tool-btn"
+          title={t.title}
+          onClick={() => onFormat(t)}
+          type="button"
+        >
+          <Icon path={t.icon} size={16} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================================
+   CHAT MESSAGE BUBBLE
+   ============================================================================ */
+
+function MessageBubble({ msg, rainbow }) {
+  const isUser = msg.role === "user";
+  return (
+    <div className={`rdm-msg-row ${isUser ? "user" : "ai"} fade-in-up`}>
+      {!isUser && (
+        <div className={`rdm-avatar ai ${rainbow ? "rainbow-orb" : ""}`}>
+          <Icon path={Icons.sparkle} size={16} />
+        </div>
+      )}
+      <div className={`rdm-bubble ${isUser ? "user" : "ai"}`}>
+        {msg.image && (
+          <img src={msg.image} alt="attachment" className="rdm-msg-img" />
+        )}
+        <div
+          className="rdm-md"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+        />
+      </div>
+      {isUser && <div className="rdm-avatar user">You</div>}
+    </div>
+  );
+}
+
+function TypingIndicator({ rainbow }) {
+  return (
+    <div className="rdm-msg-row ai fade-in">
+      <div className={`rdm-avatar ai ${rainbow ? "rainbow-orb" : ""}`}>
+        <Icon path={Icons.sparkle} size={16} />
+      </div>
+      <div className="rdm-bubble ai">
+        <div className="rdm-typing">
+          <span /><span /><span />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   MAIN APP
+   ============================================================================ */
+
+export default function App({ onSendToEngine }) {
+  // --- Auth (NEVER auto-login; always start logged out) ---
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // --- Settings ---
+  const [settings, setSettings] = useState(() =>
+    store.get(LS_KEYS.settings, DEFAULT_SETTINGS)
+  );
+
+  // --- Chats ---
+  const [chats, setChats] = useState(() => store.get(LS_KEYS.chats, []));
+  const [activeId, setActiveId] = useState(() =>
+    store.get(LS_KEYS.activeChat, null)
+  );
+
+  // --- UI state ---
+  const [input, setInput] = useState("");
+  const [attachment, setAttachment] = useState(null); // {dataUrl,name}
+  const [sending, setSending] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [proOpen, setProOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameVal, setRenameVal] = useState("");
 
-  // Auth & Admin Modal State
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authCode, setAuthCode] = useState("");
-  const [authStep, setAuthStep] = useState<1 | 2>(1);
-  const [userEmail, setUserEmail] = useState<string | null>("hossiani961@gmail.com");
-  const [adminList, setAdminList] = useState<AdminUser[]>(DEFAULT_ADMINS);
+  const textareaRef = useRef(null);
+  const fileRef = useRef(null);
+  const scrollRef = useRef(null);
 
-  // Explorer State
-  const [explorerTree, setExplorerTree] = useState<ExplorerNode[]>(INITIAL_EXPLORER_TREE);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({ ws: true, ss: true, sis: true, gui_main: true, sps: true });
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const rainbow = settings.rainbow;
 
-  // Copy Feedback State
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const activeSession = useMemo(() => {
-    return sessions.find((s) => s.id === activeSessionId) || sessions[0];
-  }, [sessions, activeSessionId]);
-
+  /* ---- Restore session on mount (validate against stored users) ---- */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeSession?.messages, isTyping]);
-
-  // Handlers
-  const createNewChat = () => {
-    const newSession: ChatSession = {
-      id: uid(),
-      title: "New Chat",
-      messages: [],
-      createdAt: Date.now(),
-    };
-    setSessions([newSession, ...sessions]);
-    setActiveSessionId(newSession.id);
-  };
-
-  const deleteSession = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    const updated = sessions.filter((s) => s.id !== id);
-    if (updated.length === 0) {
-      const fresh: ChatSession = { id: uid(), title: "New Chat", messages: [], createdAt: Date.now() };
-      setSessions([fresh]);
-      setActiveSessionId(fresh.id);
-    } else {
-      setSessions(updated);
-      if (activeSessionId === id) {
-        setActiveSessionId(updated[0].id);
-      }
+    const session = store.get(LS_KEYS.session, null);
+    if (session?.email) {
+      const users = store.get(LS_KEYS.users, {});
+      const rec = users[session.email];
+      // Only restore if a matching account exists — no hardcoded/auto owner login.
+      if (rec) setUser({ name: rec.name, email: rec.email, pro: !!rec.pro });
     }
+    setAuthChecked(true);
+  }, []);
+
+  /* ---- Persist settings / chats / active ---- */
+  useEffect(() => store.set(LS_KEYS.settings, settings), [settings]);
+  useEffect(() => store.set(LS_KEYS.chats, chats), [chats]);
+  useEffect(() => store.set(LS_KEYS.activeChat, activeId), [activeId]);
+
+  /* ---- Apply theme to root ---- */
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", settings.theme);
+    document.documentElement.setAttribute(
+      "data-anim",
+      settings.animations ? "on" : "off"
+    );
+  }, [settings.theme, settings.animations]);
+
+  /* ---- Draft: load when active chat changes ---- */
+  useEffect(() => {
+    if (!user) return;
+    const draft = store.raw(LS_KEYS.draftPrefix + (activeId || "new"), "");
+    setInput(draft);
+  }, [activeId, user]);
+
+  /* ---- Draft: save on input change (debounced) ---- */
+  useEffect(() => {
+    if (!user) return;
+    const t = setTimeout(() => {
+      store.setRaw(LS_KEYS.draftPrefix + (activeId || "new"), input);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [input, activeId, user]);
+
+  const activeChat = useMemo(
+    () => chats.find((c) => c.id === activeId) || null,
+    [chats, activeId]
+  );
+
+  /* ---- Auto-scroll ---- */
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: settings.animations ? "smooth" : "auto",
+    });
+  }, [activeChat?.messages?.length, sending, settings.animations]);
+
+  /* ---- Auto-grow textarea ---- */
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+  }, [input]);
+
+  /* ================= AUTH HANDLERS ================= */
+  const handleAuth = (u) => {
+    setUser(u);
+    store.set(LS_KEYS.session, { email: u.email });
+    playBlip(880, 0.1, settings.sound);
   };
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text || isTyping) return;
+  const handleLogout = () => {
+    setUser(null);
+    store.remove(LS_KEYS.session);
+    setSidebarOpen(false);
+  };
 
-    const userMsg: ChatMessage = {
-      id: uid(),
+  /* ================= CHAT HANDLERS ================= */
+  const newChat = () => {
+    setActiveId(null);
+    setInput("");
+    setAttachment(null);
+    setSidebarOpen(false);
+  };
+
+  const deleteChat = (id) => {
+    setChats((cs) => cs.filter((c) => c.id !== id));
+    store.remove(LS_KEYS.draftPrefix + id);
+    if (activeId === id) setActiveId(null);
+  };
+
+  const commitRename = (id) => {
+    if (renameVal.trim())
+      setChats((cs) =>
+        cs.map((c) => (c.id === id ? { ...c, title: renameVal.trim() } : c))
+      );
+    setRenamingId(null);
+    setRenameVal("");
+  };
+
+  /* ================= FORMATTING ================= */
+  const applyFormat = (tool) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = input.slice(start, end);
+    const [pre, post] = tool.wrap;
+    const before = input.slice(0, start);
+    const after = input.slice(end);
+    const placeholder = selected || (tool.line ? "" : tool.title.toLowerCase());
+    const next = before + pre + placeholder + post + after;
+    setInput(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const cursor = start + pre.length + placeholder.length;
+      ta.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  /* ================= IMAGE UPLOAD ================= */
+  const onPickImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () =>
+      setAttachment({ dataUrl: reader.result, name: file.name });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  /* ================= SEND ================= */
+  const send = async () => {
+    const text = input.trim();
+    if ((!text && !attachment) || sending) return;
+
+    playBlip(660, 0.07, settings.sound);
+
+    const userMsg = {
+      id: crypto.randomUUID?.() || String(Date.now()),
       role: "user",
-      text,
-      createdAt: Date.now(),
-      code: null,
-      images: null,
+      content: text,
+      image: attachment?.dataUrl || null,
+      ts: Date.now(),
     };
 
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSessionId
-          ? {
-              ...s,
-              title:
-                s.messages.length === 0 || s.title === "New Chat"
-                  ? text.slice(0, 32) + (text.length > 32 ? "…" : "")
-                  : s.title,
-              messages: [...s.messages, userMsg],
-            }
-          : s
-      )
-    );
-    setInput("");
-    setIsTyping(true);
+    let chatId = activeId;
+    let isNew = false;
 
-    try {
-      const intent = detectIntent(text);
-      let aiText = "";
-      let images = null;
-      let code = null;
-
-      if (intent === "image") {
-        aiText = `Here are some GUI concept assets generated for "${text.trim()}".`;
-        images = generateImages(text);
-      } else {
-        aiText = await callAIApi(text, modelId, systemInstructions);
-        if (aiText.includes("```")) {
-          const match = aiText.match(/```(?:lua|luau)?([\s\S]*?)```/);
-          if (match) {
-            code = {
-              language: "lua",
-              filename: "GeneratedScript.lua",
-              content: match[1].trim()
-            };
-          }
-        }
+    setChats((prev) => {
+      if (chatId) {
+        return prev.map((c) =>
+          c.id === chatId
+            ? { ...c, messages: [...c.messages, userMsg], updated: Date.now() }
+            : c
+        );
       }
+      // Create new chat with auto-generated title
+      isNew = true;
+      chatId = crypto.randomUUID?.() || String(Date.now());
+      const newC = {
+        id: chatId,
+        title: generateChatTitle(text || attachment?.name || "New Chat"),
+        model: settings.model,
+        messages: [userMsg],
+        created: Date.now(),
+        updated: Date.now(),
+      };
+      return [newC, ...prev];
+    });
 
-      const aiMsg: ChatMessage = {
-        id: uid(),
-        role: "ai",
-        text: aiText,
-        code,
-        images,
-        createdAt: Date.now()
+    if (isNew) setActiveId(chatId);
+    setInput("");
+    setAttachment(null);
+    store.remove(LS_KEYS.draftPrefix + (activeId || "new"));
+    setSending(true);
+
+    // --- Delegate to host engine (NO direct LLM calls here) ---
+    try {
+      let reply;
+      const payload = {
+        model: settings.model,
+        system: settings.systemPrompt,
+        temperature: settings.temperature,
+        message: text,
+        image: userMsg.image,
       };
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId ? { ...s, messages: [...s.messages, aiMsg] } : s
+      if (typeof onSendToEngine === "function") {
+        reply = await onSendToEngine(payload);
+      } else {
+        // Graceful placeholder when no host engine is wired in.
+        await new Promise((r) => setTimeout(r, 900));
+        reply =
+          "Hello! I'm **RDM-ENGINE**, made and developed by RDM-ENGINE. " +
+          "The host application will route your request to the selected model " +
+          `(*${MODELS.find((m) => m.id === settings.model)?.label}*). ` +
+          "This is a UI placeholder response.";
+      }
+
+      const aiMsg = {
+        id: crypto.randomUUID?.() || String(Date.now() + 1),
+        role: "assistant",
+        content: reply || "",
+        ts: Date.now(),
+      };
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === chatId
+            ? { ...c, messages: [...c.messages, aiMsg], updated: Date.now() }
+            : c
         )
       );
-    } catch (err: any) {
-      const errorMsg: ChatMessage = {
-        id: uid(),
-        role: "ai",
-        text: `Error: ${err.message || "Response not generated. Please check your Render configuration."}`,
-        createdAt: Date.now()
+      playBlip(990, 0.09, settings.sound);
+    } catch (err) {
+      const aiMsg = {
+        id: String(Date.now() + 2),
+        role: "assistant",
+        content:
+          "⚠️ The engine could not be reached. Please try again. — RDM-ENGINE",
+        ts: Date.now(),
       };
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId ? { ...s, messages: [...s.messages, errorMsg] } : s
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === chatId ? { ...c, messages: [...c.messages, aiMsg] } : c
         )
       );
     } finally {
-      setIsTyping(false);
+      setSending(false);
     }
-  }, [input, isTyping, activeSessionId, modelId, systemInstructions]);
+  };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      send();
     }
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleUpgrade = () => {
+    // Requires login (enforced in modal UI too)
+    if (!user) return;
+    const users = store.get(LS_KEYS.users, {});
+    if (users[user.email]) {
+      users[user.email].pro = true;
+      store.set(LS_KEYS.users, users);
+    }
+    setUser((u) => ({ ...u, pro: true }));
+    playBlip(1046, 0.15, settings.sound);
+    setProOpen(false);
   };
 
-  const toggleFolder = (id: string) => {
-    setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const needPro = () => setProOpen(true);
 
-  const renderExplorerNode = (node: ExplorerNode, depth = 0) => {
-    const isFolder = node.type === "folder" || node.type === "gui";
-    const isExpanded = expandedFolders[node.id];
-    const isSelected = selectedNode === node.id;
+  /* ================= RENDER ================= */
 
-    let iconName = "file";
-    if (node.type === "folder") iconName = "folder";
-    if (node.type === "script" || node.type === "localscript" || node.type === "module") iconName = "file";
-    if (node.type === "gui") iconName = "shield";
-
+  if (!authChecked) {
     return (
-      <div key={node.id} style={{ userSelect: "none" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: `6px 8px 6px ${12 + depth * 16}px`,
-            cursor: "pointer",
-            backgroundColor: isSelected ? t.border : "transparent",
-            borderRadius: "6px",
-            color: t.text,
-            fontSize: "13px",
-            gap: "8px"
-          }}
-          onClick={() => {
-            if (isFolder) toggleFolder(node.id);
-            setSelectedNode(node.id);
-          }}
-        >
-          {isFolder && (
-            <span style={{ display: "flex", alignItems: "center" }}>
-              <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} color={t.textMuted} />
-            </span>
-          )}
-          {!isFolder && <span style={{ width: 14 }} />}
-          <Icon name={iconName} size={15} color={node.type === "script" ? "#3fb950" : node.type === "localscript" ? "#58a6ff" : "#d29922"} />
-          <span>{node.name}</span>
+      <div className="rdm-root rdm-boot">
+        <div className={`rdm-logo-orb ${rainbow ? "rainbow-orb" : ""} big`}>
+          <Icon path={Icons.sparkle} size={30} />
         </div>
-        {isFolder && isExpanded && node.children && (
-          <div>
-            {node.children.map((child) => renderExplorerNode(child, depth + 1))}
-          </div>
-        )}
       </div>
     );
-  };
+  }
+
+  if (!user) {
+    return (
+      <div className="rdm-root">
+        <StyleSheet />
+        <AuthScreen onAuth={handleAuth} rainbow={rainbow} />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ ...styles.container, backgroundColor: t.bg, color: t.text }}>
-      {/* HEADER */}
-      <header style={{ ...styles.header, backgroundColor: t.surface, borderColor: t.border }}>
-        <div style={styles.headerLeft}>
-          <button style={{ ...styles.iconBtn, color: t.text }} onClick={() => setSidebarOpen(!sidebarOpen)}>
-            <Icon name="menu" size={20} />
-          </button>
-          <div style={styles.logoArea}>
-            <span style={styles.logoBadge}>RDM</span>
-            <span style={styles.logoText}>Roblox AI Studio</span>
+    <div className="rdm-root">
+      <StyleSheet />
+
+      {/* Backdrop for mobile sidebar */}
+      {sidebarOpen && (
+        <div className="rdm-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* ===================== SIDEBAR ===================== */}
+      <aside className={`rdm-sidebar ${sidebarOpen ? "open" : ""}`}>
+        <div className="rdm-sidebar-head">
+          <div className="rdm-brand">
+            <div className={`rdm-logo-orb sm ${rainbow ? "rainbow-orb" : ""}`}>
+              <Icon path={Icons.sparkle} size={16} />
+            </div>
+            <span className={rainbow ? "rainbow-text" : ""}>RDM-ENGINE</span>
           </div>
         </div>
 
-        <div style={styles.headerCenter}>
-          <select
-            value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
-            style={{ ...styles.modelSelect, backgroundColor: t.bg, color: t.text, borderColor: t.border }}
-          >
-            {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>{m.name} ({m.provider})</option>
-            ))}
-          </select>
-        </div>
+        <button
+          className={`rdm-newchat ${rainbow ? "rainbow-btn" : ""}`}
+          onClick={newChat}
+        >
+          <Icon path={Icons.plus} size={16} /> New Chat
+        </button>
 
-        <div style={styles.headerRight}>
-          <button
-            style={{ ...styles.navTabBtn, backgroundColor: activeTab === "chat" ? t.border : "transparent", color: t.text }}
-            onClick={() => setActiveTab("chat")}
-          >
-            Chat
-          </button>
-          <button
-            style={{ ...styles.navTabBtn, backgroundColor: activeTab === "explorer" ? t.border : "transparent", color: t.text }}
-            onClick={() => setActiveTab("explorer")}
-          >
-            Explorer
-          </button>
-          {userEmail === "hossiani961@gmail.com" && (
-            <button
-              style={{ ...styles.navTabBtn, backgroundColor: activeTab === "admin" ? t.border : "transparent", color: t.text }}
-              onClick={() => setActiveTab("admin")}
+        <div className="rdm-chat-list">
+          {chats.length === 0 && (
+            <div className="rdm-empty-list">No chats yet.</div>
+          )}
+          {chats.map((c) => (
+            <div
+              key={c.id}
+              className={`rdm-chat-item ${c.id === activeId ? "active" : ""}`}
+              onClick={() => {
+                setActiveId(c.id);
+                setSidebarOpen(false);
+              }}
             >
-              Admin Panel
-            </button>
-          )}
+              {renamingId === c.id ? (
+                <input
+                  className="rdm-rename-input"
+                  value={renameVal}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setRenameVal(e.target.value)}
+                  onBlur={() => commitRename(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename(c.id);
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                />
+              ) : (
+                <span className="rdm-chat-title">{c.title}</span>
+              )}
+              <div className="rdm-chat-actions">
+                <button
+                  className="rdm-mini-btn"
+                  title="Rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingId(c.id);
+                    setRenameVal(c.title);
+                  }}
+                >
+                  <Icon path={Icons.edit} size={13} />
+                </button>
+                <button
+                  className="rdm-mini-btn danger"
+                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteChat(c.id);
+                  }}
+                >
+                  <Icon path={Icons.trash} size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
 
-          <button style={{ ...styles.iconBtn, color: t.text }} onClick={() => setSettingsOpen(true)}>
-            <Icon name="settings" size={20} />
-          </button>
-
+        <div className="rdm-sidebar-foot">
           <button
-            style={{ ...styles.authBtn, backgroundColor: t.primary }}
-            onClick={() => {
-              if (userEmail) {
-                setUserEmail(null);
-              } else {
-                setAuthModalOpen(true);
-              }
-            }}
+            className="rdm-user-chip"
+            onClick={() => setSettingsOpen(true)}
           >
-            <Icon name="user" size={16} />
-            <span>{userEmail ? "Sign Out" : "Sign In"}</span>
+            <div className={`rdm-avatar user sm ${user.pro ? "pro" : ""}`}>
+              {user.name?.[0]?.toUpperCase() || "U"}
+            </div>
+            <div className="rdm-user-meta">
+              <span className="rdm-user-name">
+                {user.name} {user.pro && <span className="rdm-pro-tag">PRO</span>}
+              </span>
+              <span className="rdm-user-email">{user.email}</span>
+            </div>
+            <Icon path={Icons.settings} size={16} />
+          </button>
+          <button className="rdm-logout-btn" onClick={handleLogout} title="Log out">
+            <Icon path={Icons.logout} size={16} />
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* BODY LAYOUT */}
-      <div style={styles.mainBody}>
-        {/* SIDEBAR (Chat History) */}
-        {sidebarOpen && (
-          <aside style={{ ...styles.sidebar, backgroundColor: t.surface, borderColor: t.border }}>
-            <div style={styles.sidebarTop}>
-              <button style={{ ...styles.newChatBtn, backgroundColor: t.primary, color: "#fff" }} onClick={createNewChat}>
-                <Icon name="plus" size={16} />
-                <span>New Chat</span>
+      {/* ===================== MAIN ===================== */}
+      <main className="rdm-main">
+        {/* HEADER */}
+        <header className="rdm-header">
+          <button
+            className="rdm-icon-btn rdm-menu-btn"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Icon path={Icons.menu} size={20} />
+          </button>
+
+          <ModelSelector
+            current={settings.model}
+            onChange={(m) => setSettings((s) => ({ ...s, model: m }))}
+            isPro={!!user.pro}
+            onNeedPro={needPro}
+            rainbow={rainbow}
+          />
+
+          <div className="rdm-header-right">
+            {!user.pro && (
+              <button
+                className={`rdm-pro-pill ${rainbow ? "rainbow-btn" : ""}`}
+                onClick={() => setProOpen(true)}
+              >
+                <Icon path={Icons.crown} size={14} /> Get Pro
               </button>
-            </div>
-            <div style={styles.sessionList}>
-              {sessions.map((s) => (
-                <div
-                  key={s.id}
-                  style={{
-                    ...styles.sessionItem,
-                    backgroundColor: s.id === activeSessionId ? t.border : "transparent",
-                    color: t.text,
-                  }}
-                  onClick={() => setActiveSessionId(s.id)}
-                >
-                  <span style={styles.sessionTitle}>{s.title}</span>
-                  <button
-                    style={styles.deleteSessionBtn}
-                    onClick={(e) => deleteSession(e, s.id)}
-                    title="Delete Chat"
-                  >
-                    <Icon name="trash" size={14} color={t.textMuted} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div style={styles.sidebarFooter}>
-              <div style={{ fontSize: "11px", color: t.textMuted }}>Connected Engine: OpenRouter</div>
-              <div style={{ fontSize: "11px", color: t.textMuted, marginTop: "2px" }}>User: {userEmail || "Guest"}</div>
-            </div>
-          </aside>
-        )}
-
-        {/* CONTENT AREA */}
-        <main style={{ ...styles.contentArea, backgroundColor: t.bg }}>
-          {activeTab === "chat" && (
-            <div style={styles.chatContainer}>
-              <div style={styles.messageScroll}>
-                {activeSession.messages.length === 0 ? (
-                  <div style={styles.emptyState}>
-                    <h2>Welcome to Roblox AI Studio</h2>
-                    <p style={{ color: t.textMuted }}>Generate advanced Luau scripts, build complex GUIs, or test game automation.</p>
-                  </div>
-                ) : (
-                  activeSession.messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      style={{
-                        ...styles.messageRow,
-                        justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-                      }}
-                    >
-                      <div
-                        style={{
-                          ...styles.messageBubble,
-                          backgroundColor: msg.role === "user" ? t.primary : t.surface,
-                          borderColor: t.border,
-                          color: t.text,
-                        }}
-                      >
-                        <div style={styles.messageText}>{msg.text}</div>
-
-                        {/* Images Grid */}
-                        {msg.images && msg.images.length > 0 && (
-                          <div style={styles.imageGrid}>
-                            {msg.images.map((imgUrl, idx) => (
-                              <img key={idx} src={imgUrl} alt={`GUI Asset ${idx}`} style={styles.previewImage} />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Code Block */}
-                        {msg.code && (
-                          <div style={{ ...styles.codeContainer, backgroundColor: t.codeBg, borderColor: t.border }}>
-                            <div style={{ ...styles.codeHeader, backgroundColor: t.surface, borderColor: t.border }}>
-                              <span style={styles.codeFilename}>{msg.code.filename}</span>
-                              <button
-                                style={{ ...styles.copyBtn, color: t.text }}
-                                onClick={() => copyToClipboard(msg.code!.content, msg.id)}
-                              >
-                                <Icon name={copiedId === msg.id ? "check" : "copy"} size={14} />
-                                <span>{copiedId === msg.id ? "Copied!" : "Copy"}</span>
-                              </button>
-                            </div>
-                            <pre style={styles.codePre}>
-                              <code>{msg.code.content}</code>
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isTyping && (
-                  <div style={styles.messageRow}>
-                    <div style={{ ...styles.messageBubble, backgroundColor: t.surface, borderColor: t.border, color: t.textMuted }}>
-                      Generating response...
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Chat Input */}
-              <div style={{ ...styles.inputArea, backgroundColor: t.surface, borderColor: t.border }}>
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask for a Roblox script, UI design, or gamepass layout..."
-                  rows={2}
-                  style={{ ...styles.textarea, backgroundColor: t.bg, color: t.text, borderColor: t.border }}
-                />
-                <button
-                  style={{ ...styles.sendBtn, backgroundColor: t.primary }}
-                  onClick={sendMessage}
-                  disabled={isTyping || !input.trim()}
-                >
-                  <Icon name="send" size={18} color="#fff" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "explorer" && (
-            <div style={styles.tabContentPanel}>
-              <h2 style={{ marginBottom: "16px" }}>Roblox Project Explorer</h2>
-              <p style={{ color: t.textMuted, marginBottom: "20px" }}>Simulated hierarchical view of workspace, scripts, and GUIs.</p>
-              <div style={{ ...styles.explorerBox, backgroundColor: t.surface, borderColor: t.border }}>
-                {explorerTree.map((node) => renderExplorerNode(node))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "admin" && userEmail === "hossiani961@gmail.com" && (
-            <div style={styles.tabContentPanel}>
-              <h2 style={{ marginBottom: "8px" }}>Owner Admin Center</h2>
-              <p style={{ color: t.textMuted, marginBottom: "20px" }}>Manage studio permissions, authorized admins, and platform status.</p>
-              
-              <div style={{ ...styles.adminTableWrapper, backgroundColor: t.surface, borderColor: t.border }}>
-                <table style={styles.adminTable}>
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${t.border}` }}>
-                      <th style={styles.th}>Email</th>
-                      <th style={styles.th}>Role</th>
-                      <th style={styles.th}>Joined</th>
-                      <th style={styles.th}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminList.map((admin, idx) => (
-                      <tr key={idx} style={{ borderBottom: `1px solid ${t.border}` }}>
-                        <td style={styles.td}>{admin.email}</td>
-                        <td style={styles.td}><span style={{ ...styles.roleBadge, backgroundColor: admin.role === "Owner" ? "#238636" : "#30363d" }}>{admin.role}</span></td>
-                        <td style={styles.td}>{admin.joinedDate}</td>
-                        <td style={styles.td}><span style={{ color: admin.status === "Active" ? "#3fb950" : "#f85149" }}>{admin.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* SETTINGS MODAL */}
-      <Modal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} title="Studio Settings">
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div>
-            <label style={styles.settingsLabel}>Theme Selection</label>
-            <div style={{ display: "flex", gap: "10px", marginTop: "6px" }}>
-              {(["dark", "midnight", "cyberpunk"] as ThemeName[]).map((thm) => (
-                <button
-                  key={thm}
-                  style={{
-                    ...styles.themeOptionBtn,
-                    backgroundColor: theme === thm ? t.primary : t.bg,
-                    borderColor: t.border,
-                    color: t.text,
-                    textTransform: "capitalize",
-                  }}
-                  onClick={() => setTheme(thm)}
-                >
-                  {thm}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label style={styles.settingsLabel}>System Instructions / Persona</label>
-            <textarea
-              value={systemInstructions}
-              onChange={(e) => setSystemInstructions(e.target.value)}
-              rows={4}
-              style={{ ...styles.textarea, backgroundColor: t.bg, color: t.text, borderColor: t.border, width: "100%", marginTop: "6px" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <button style={{ ...styles.authBtn, backgroundColor: t.primary }} onClick={() => setSettingsOpen(false)}>
-              Save & Close
+            )}
+            <button
+              className="rdm-icon-btn"
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+            >
+              <Icon path={Icons.settings} size={19} />
             </button>
           </div>
-        </div>
-      </Modal>
+        </header>
 
-      {/* AUTH MODAL */}
-      <Modal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} title="Sign In to Roblox AI Studio">
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {authStep === 1 ? (
-            <>
-              <div>
-                <label style={styles.settingsLabel}>Email Address</label>
-                <input
-                  type="email"
-                  placeholder="name@example.com"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  style={{ ...styles.input, backgroundColor: t.bg, color: t.text, borderColor: t.border, width: "100%", marginTop: "6px" }}
-                />
-              </div>
-              <button
-                style={{ ...styles.authBtn, backgroundColor: t.primary, width: "100%", justifyContent: "center", padding: "10px" }}
-                onClick={() => {
-                  if (authEmail.trim()) setAuthStep(2);
-                }}
-              >
-                Send Verification Code
-              </button>
-            </>
-          ) : (
-            <>
-              <p style={{ fontSize: "14px", color: t.textMuted, margin: 0 }}>
-                We sent a verification code to <strong>{authEmail}</strong>. (For testing, enter any 6 digits).
-              </p>
-              <div>
-                <label style={styles.settingsLabel}>Verification Code</label>
-                <input
-                  type="text"
-                  placeholder="123456"
-                  value={authCode}
-                  onChange={(e) => setAuthCode(e.target.value)}
-                  style={{ ...styles.input, backgroundColor: t.bg, color: t.text, borderColor: t.border, width: "100%", marginTop: "6px" }}
-                />
-              </div>
-              <button
-                style={{ ...styles.authBtn, backgroundColor: t.primary, width: "100%", justifyContent: "center", padding: "10px" }}
-                onClick={() => {
-                  setUserEmail(authEmail);
-                  setAuthModalOpen(false);
-                  setAuthStep(1);
-                  setAuthCode("");
-                }}
-              >
-                Verify & Sign In
-              </button>
-            </>
-          )}
+        {/* MESSAGES */}
+        <div className="rdm-scroll" ref={scrollRef}>
+          <div className="rdm-messages">
+            {!activeChat || activeChat.messages.length === 0 ? (
+              <WelcomeState rainbow={rainbow} name={user.name} />
+            ) : (
+              activeChat.messages.map((m) => (
+                <MessageBubble key={m.id} msg={m} rainbow={rainbow} />
+              ))
+            )}
+            {sending && <TypingIndicator rainbow={rainbow} />}
+          </div>
         </div>
-      </Modal>
+
+        {/* COMPOSER */}
+        <div className="rdm-composer-wrap">
+          <div className={`rdm-composer glass ${rainbow ? "rainbow-border" : ""}`}>
+            <FormatToolbar onFormat={applyFormat} rainbow={rainbow} />
+
+            {attachment && (
+              <div className="rdm-attach-preview fade-in">
+                <img src={attachment.dataUrl} alt={attachment.name} />
+                <div className="rdm-attach-name">{attachment.name}</div>
+                <button
+                  className="rdm-attach-x"
+                  onClick={() => setAttachment(null)}
+                >
+                  <Icon path={Icons.x} size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="rdm-input-row">
+              <button
+                className="rdm-icon-btn"
+                onClick={() => fileRef.current?.click()}
+                title="Attach image"
+              >
+                <Icon path={Icons.image} size={19} />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={onPickImage}
+              />
+              <textarea
+                ref={textareaRef}
+                className="rdm-textarea-input"
+                placeholder="Message RDM-ENGINE…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+                rows={1}
+              />
+              <button
+                className={`rdm-send-btn ${rainbow ? "rainbow-btn" : ""} ${
+                  input.trim() || attachment ? "ready" : ""
+                }`}
+                onClick={send}
+                disabled={sending || (!input.trim() && !attachment)}
+              >
+                <Icon path={Icons.send} size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="rdm-disclaimer">
+            RDM-ENGINE — made & developed by RDM-ENGINE. Press{" "}
+            <kbd>Enter</kbd> to send, <kbd>Shift</kbd>+<kbd>Enter</kbd> for new
+            line.
+          </div>
+        </div>
+      </main>
+
+      {/* MODALS */}
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        setSettings={setSettings}
+        onOpenPro={() => setProOpen(true)}
+        user={user}
+        rainbow={rainbow}
+      />
+      <ProModal
+        open={proOpen}
+        onClose={() => setProOpen(false)}
+        user={user}
+        onUpgrade={handleUpgrade}
+        rainbow={rainbow}
+      />
     </div>
   );
 }
 
 /* ============================================================================
-   STYLESHEET
+   WELCOME STATE
    ============================================================================ */
 
-const styles: Record<string, CSSProperties> = {
-  container: { display: "flex", flexDirection: "column", height: "100vh", width: "100vw", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", height: "60px", padding: "0 16px", borderBottomWidth: "1px", borderBottomStyle: "solid", zIndex: 10 },
-  headerLeft: { display: "flex", alignItems: "center", gap: "12px" },
-  logoArea: { display: "flex", alignItems: "center", gap: "8px" },
-  logoBadge: { backgroundColor: "#238636", color: "#fff", fontWeight: 700, fontSize: "12px", padding: "3px 6px", borderRadius: "4px" },
-  logoText: { fontWeight: 600, fontSize: "16px" },
-  headerCenter: { display: "flex", alignItems: "center" },
-  modelSelect: { padding: "6px 12px", borderRadius: "6px", borderStyle: "solid", borderWidth: "1px", fontSize: "13px", outline: "none", cursor: "pointer" },
-  headerRight: { display: "flex", alignItems: "center", gap: "10px" },
-  navTabBtn: { background: "none", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 500 },
-  iconBtn: { background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center" },
-  authBtn: { display: "flex", alignItems: "center", gap: "6px", border: "none", padding: "6px 14px", borderRadius: "6px", color: "#fff", fontWeight: 600, fontSize: "13px", cursor: "pointer" },
-  mainBody: { display: "flex", flex: 1, overflow: "hidden" },
-  sidebar: { width: "260px", borderRightWidth: "1px", borderRightStyle: "solid", display: "flex", flexDirection: "column" },
-  sidebarTop: { padding: "12px" },
-  newChatBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "10px", borderRadius: "6px", border: "none", fontWeight: 600, cursor: "pointer", fontSize: "13px" },
-  sessionList: { flex: 1, overflowY: "auto", padding: "0 8px", display: "flex", flexDirection: "column", gap: "4px" },
-  sessionItem: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "13px" },
-  sessionTitle: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 },
-  deleteSessionBtn: { background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px" },
-  sidebarFooter: { padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)" },
-  contentArea: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  chatContainer: { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" },
-  messageScroll: { flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: "16px" },
-  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center" },
-  messageRow: { display: "flex", width: "100%" },
-  messageBubble: { maxWidth: "80%", padding: "12px 16px", borderRadius: "12px", borderStyle: "solid", borderWidth: "1px", display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px", lineHeight: 1.5 },
-  messageText: { whiteSpace: "pre-wrap" },
-  imageGrid: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "6px" },
-  previewImage: { width: "160px", height: "120px", objectFit: "cover", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" },
-  codeContainer: {borderRadius: "8px", overflow: "hidden", borderStyle: "solid", borderWidth: "1px", marginTop: "6px" },
-  codeHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottomStyle: "solid", borderBottomWidth: "1px", fontSize: "12px" },
-  codeFilename: { fontWeight: 600 },
-  copyBtn: { background: "none", border: "none", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer", fontSize: "12px" },
-  codePre: { padding: "12px", margin: 0, overflowX: "auto", fontSize: "13px", fontFamily: "Courier New, monospace" },
-  inputArea: { display: "flex", padding: "16px", borderTopStyle: "solid", borderTopWidth: "1px", gap: "12px", alignItems: "center" },
-  textarea: { flex: "1", padding: "10px 12px", borderRadius: "8px", borderStyle: "solid", borderWidth: "1px", fontSize: "14px", outline: "none", resize: "none" },
-  sendBtn: { border: "none", borderRadius: "8px", width: "42px", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
-  tabContentPanel: { flex: 1, padding: "24px", overflowY: "auto" },
-  explorerBox: { borderStyle: "solid", borderWidth: "1px", borderRadius: "8px", padding: "12px", maxWidth: "400px" },
-  adminTableWrapper: { borderStyle: "solid", borderWidth: "1px", borderRadius: "8px", overflow: "hidden", maxWidth: "800px" },
-  adminTable: { width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" },
-  th: { padding: "12px 16px", fontWeight: 600 },
-  td: { padding: "12px 16px" },
-  roleBadge: { padding: "2px 8px", borderRadius: "4px", color: "#fff", fontSize: "11px", fontWeight: 600 },
-  settingsLabel: { fontSize: "13px", fontWeight: 600, display: "block" },
-  themeOptionBtn: { padding: "8px 16px", borderRadius: "6px", borderStyle: "solid", borderWidth: "1px", cursor: "pointer", fontWeight: 500, fontSize: "13px" },
-  input: { padding: "8px 12px", borderRadius: "6px", borderStyle: "solid", borderWidth: "1px", fontSize: "13px", outline: "none" },
-};
+function WelcomeState({ rainbow, name }) {
+  const suggestions = [
+    "Build me a landing page in React",
+    "Explain quantum computing simply",
+    "Write a poem about the ocean",
+    "Debug my Python function",
+  ];
+  return (
+    <div className="rdm-welcome fade-in">
+      <div className={`rdm-logo-orb big ${rainbow ? "rainbow-orb" : ""}`}>
+        <Icon path={Icons.sparkle} size={34} />
+      </div>
+      <h1 className={rainbow ? "rainbow-text" : ""}>
+        Hello{name ? `, ${name.split(" ")[0]}` : ""} 👋
+      </h1>
+      <p className="rdm-muted">
+        I'm <strong>RDM-ENGINE</strong>, made & developed by RDM-ENGINE. How can
+        I help you today?
+      </p>
+      <div className="rdm-suggest-grid">
+        {suggestions.map((s) => (
+          <div className="rdm-suggest-card" key={s}>
+            {s}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   STYLES (injected once) — themes, rainbow, animations, responsive
+   ============================================================================ */
+
+function StyleSheet() {
+  return <style>{CSS}</style>;
+}
+
+const CSS = `
+:root{
+  --bg:#0a0b12; --bg2:#12131f; --panel:#161826; --panel2:#1c1f30;
+  --border:#282b40; --text:#eef0f8; --muted:#9aa0b8; --accent:#7c6bff;
+  --accent2:#4dd0ff; --danger:#ff5c6a; --radius:16px;
+}
+[data-theme="aurora"]{
+  --bg:#07131a; --bg2:#0a1b24; --panel:#0e2530; --panel2:#123240;
+  --border:#1c4353; --accent:#00e0c6; --accent2:#7c6bff;
+}
+[data-theme="mono"]{
+  --bg:#0c0c0d; --bg2:#141416; --panel:#1a1a1c; --panel2:#242427;
+  --border:#333336; --accent:#e8e8ea; --accent2:#a0a0a4; --text:#f4f4f6;
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+kbd{background:var(--panel2);border:1px solid var(--border);border-radius:5px;
+  padding:1px 5px;font-size:11px}
+
+.rdm-root{display:flex;height:100vh;width:100%;overflow:hidden;
+  background:radial-gradient(1200px 600px at 80% -10%, var(--bg2), var(--bg))}
+.rdm-boot{align-items:center;justify-content:center}
+
+[data-anim="off"] *{animation:none!important;transition:none!important}
+
+/* ---------- RAINBOW ---------- */
+@keyframes rainbowShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes spinGlow{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+.rainbow-text{background:linear-gradient(90deg,#ff5c8a,#ffb347,#ffe66d,#7bed9f,#4dd0ff,#7c6bff,#ff5c8a);
+  background-size:300% 100%;-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;animation:rainbowShift 6s linear infinite;font-weight:800}
+.rainbow-btn{background:linear-gradient(90deg,#ff5c8a,#7c6bff,#4dd0ff,#7bed9f,#ff5c8a)!important;
+  background-size:300% 100%!important;animation:rainbowShift 5s linear infinite;
+  color:#fff!important;border:none!important}
+.rainbow-btn:hover{filter:brightness(1.1)}
+.rainbow-border{position:relative}
+.rainbow-border::before{content:"";position:absolute;inset:-2px;border-radius:inherit;
+  background:linear-gradient(90deg,#ff5c8a,#ffb347,#7bed9f,#4dd0ff,#7c6bff,#ff5c8a);
+  background-size:300% 100%;animation:rainbowShift 5s linear infinite;z-index:-1;
+  filter:blur(1px);opacity:.85}
+.rainbow-border-soft{border:1px solid transparent;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,
+  linear-gradient(90deg,#ff5c8a55,#7c6bff55,#4dd0ff55) border-box}
+.rainbow-orb{background:conic-gradient(from 0deg,#ff5c8a,#ffb347,#ffe66d,#7bed9f,#4dd0ff,#7c6bff,#ff5c8a)!important;
+  animation:spinGlow 8s linear infinite;box-shadow:0 0 24px #7c6bff88}
+
+/* ---------- GLASS ---------- */
+.glass{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));
+  backdrop-filter:blur(14px);border:1px solid var(--border)}
+
+/* ---------- ANIMATIONS ---------- */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes fadeInDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.fade-in{animation:fadeIn .3s ease}
+.fade-in-up{animation:fadeInUp .4s cubic-bezier(.2,.8,.2,1)}
+.fade-in-down{animation:fadeInDown .25s ease}
+.slide-up{animation:slideUp .35s cubic-bezier(.2,.8,.2,1)}
+.pulse{animation:pulse 2s ease-in-out infinite}
+.rot{transform:rotate(180deg);transition:.2s}
+
+/* ---------- LOGO ORB ---------- */
+.rdm-logo-orb{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+  box-shadow:0 8px 30px rgba(124,107,255,.35)}
+.rdm-logo-orb.sm{width:28px;height:28px;border-radius:9px}
+.rdm-logo-orb.big{width:72px;height:72px;border-radius:22px}
+
+/* ---------- AUTH ---------- */
+.rdm-auth-wrap{position:relative;flex:1;display:grid;place-items:center;padding:24px;overflow:hidden}
+.rdm-auth-bg{position:absolute;inset:0;background:
+  radial-gradient(600px 400px at 20% 20%,#7c6bff33,transparent),
+  radial-gradient(500px 400px at 80% 80%,#4dd0ff22,transparent);animation:fadeIn 1s}
+.rdm-auth-card{width:100%;max-width:400px;padding:34px 28px;border-radius:24px;
+  display:flex;flex-direction:column;gap:14px;z-index:1;animation:slideUp .5s}
+.rdm-auth-logo{text-align:center;margin-bottom:6px}
+.rdm-auth-logo .rdm-logo-orb{margin:0 auto 12px}
+.rdm-auth-logo h1{margin:0;font-size:26px;letter-spacing:.5px}
+.rdm-tab-switch{display:flex;background:var(--bg);border:1px solid var(--border);
+  border-radius:12px;padding:4px;margin-bottom:6px}
+.rdm-tab-switch button{flex:1;padding:9px;border:none;background:none;color:var(--muted);
+  font-weight:600;border-radius:9px;cursor:pointer;transition:.2s}
+.rdm-tab-switch button.active{background:var(--accent);color:#fff}
+.rdm-input,.rdm-textarea{width:100%;padding:13px 15px;background:var(--bg);
+  border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;
+  outline:none;transition:.2s;font-family:inherit}
+.rdm-input:focus,.rdm-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent)33}
+.rdm-error{background:#ff5c6a22;color:#ff9aa5;padding:10px 12px;border-radius:10px;font-size:13px}
+.rdm-btn-primary{padding:13px;border:none;border-radius:12px;background:var(--accent);
+  color:#fff;font-weight:700;cursor:pointer;font-size:14px;transition:.2s;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+.rdm-btn-primary:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.rdm-btn-primary:disabled{opacity:.6;cursor:not-allowed}
+.rdm-btn-ghost{padding:9px 14px;border:1px solid var(--border);border-radius:10px;
+  background:none;color:var(--text);cursor:pointer;font-size:13px}
+.rdm-btn-ghost:hover{background:var(--panel2)}
+.rdm-muted{color:var(--muted);font-size:13px}
+.rdm-fineprint{font-size:11.5px;text-align:center;margin:0}
+
+/* ---------- SIDEBAR ---------- */
+.rdm-sidebar{width:280px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:14px;gap:12px;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.rdm-sidebar-head{display:flex;align-items:center;justify-content:space-between}
+.rdm-brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:16px}
+.rdm-newchat{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;
+  border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--text);
+  font-weight:600;cursor:pointer;transition:.2s}
+.rdm-newchat:hover{transform:translateY(-1px)}
+.rdm-chat-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin:-4px}
+.rdm-chat-list::-webkit-scrollbar{width:6px}
+.rdm-chat-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.rdm-empty-list{color:var(--muted);font-size:13px;text-align:center;padding:20px 0}
+.rdm-chat-item{display:flex;align-items:center;gap:6px;padding:10px 11px;border-radius:11px;
+  cursor:pointer;transition:.15s;position:relative}
+.rdm-chat-item:hover{background:var(--panel2)}
+.rdm-chat-item.active{background:var(--accent)22;box-shadow:inset 0 0 0 1px var(--accent)55}
+.rdm-chat-title{flex:1;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdm-chat-actions{display:flex;gap:2px;opacity:0;transition:.15s}
+.rdm-chat-item:hover .rdm-chat-actions{opacity:1}
+.rdm-mini-btn{border:none;background:none;color:var(--muted);cursor:pointer;padding:4px;
+  border-radius:6px;display:grid;place-items:center}
+.rdm-mini-btn:hover{background:var(--bg);color:var(--text)}
+.rdm-mini-btn.danger:hover{color:var(--danger)}
+.rdm-rename-input{flex:1;background:var(--bg);border:1px solid var(--accent);border-radius:7px;
+  color:var(--text);padding:4px 7px;font-size:13px;outline:none}
+.rdm-sidebar-foot{display:flex;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:12px}
+.rdm-user-chip{flex:1;display:flex;align-items:center;gap:9px;padding:8px;border:none;
+  background:none;color:var(--text);cursor:pointer;border-radius:11px;transition:.15s}
+.rdm-user-chip:hover{background:var(--panel2)}
+.rdm-user-meta{flex:1;text-align:left;overflow:hidden}
+.rdm-user-name{display:block;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.rdm-user-email{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdm-pro-tag{font-size:9px;background:linear-gradient(90deg,#ffb347,#ff5c8a);color:#fff;
+  padding:1px 5px;border-radius:5px;font-weight:800}
+.rdm-logout-btn{border:1px solid var(--border);background:none;color:var(--muted);
+  padding:9px;border-radius:10px;cursor:pointer;display:grid;place-items:center}
+.rdm-logout-btn:hover{color:var(--danger);border-color:var(--danger)}
+
+/* ---------- AVATARS ---------- */
+.rdm-avatar{width:32px;height:32px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;
+  font-size:12px;font-weight:700}
+.rdm-avatar.ai{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.rdm-avatar.user{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+.rdm-avatar.sm{width:30px;height:30px;border-radius:9px}
+.rdm-avatar.pro{box-shadow:0 0 0 2px #ffb347}
+
+/* ---------- MAIN ---------- */
+.rdm-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.rdm-header{display:flex;align-items:center;gap:12px;padding:12px 18px;
+  border-bottom:1px solid var(--border);background:var(--bg2)cc;backdrop-filter:blur(10px)}
+.rdm-header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.rdm-icon-btn{border:none;background:none;color:var(--text);cursor:pointer;padding:9px;
+  border-radius:10px;display:grid;place-items:center;transition:.15s}
+.rdm-icon-btn:hover{background:var(--panel2)}
+.rdm-menu-btn{display:none}
+.rdm-pro-pill{display:flex;align-items:center;gap:6px;padding:8px 13px;border-radius:20px;
+  border:1px solid var(--border);background:var(--panel2);color:var(--text);cursor:pointer;
+  font-size:12.5px;font-weight:700;transition:.2s}
+.rdm-pro-pill:hover{transform:translateY(-1px)}
+
+/* ---------- MODEL SELECTOR ---------- */
+.rdm-model-select{position:relative}
+.rdm-model-trigger{display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:12px;
+  background:var(--panel2);border:1px solid var(--border);color:var(--text);cursor:pointer;
+  font-weight:600;font-size:13.5px;transition:.2s}
+.rdm-model-trigger:hover{filter:brightness(1.1)}
+.rdm-model-dot{width:8px;height:8px;border-radius:50%;background:#7bed9f;box-shadow:0 0 8px #7bed9f}
+.rdm-model-menu{position:absolute;top:calc(100% + 8px);left:0;width:290px;border-radius:14px;
+  padding:6px;z-index:50;display:flex;flex-direction:column;gap:2px}
+.rdm-model-item{text-align:left;padding:11px 12px;border:none;background:none;color:var(--text);
+  cursor:pointer;border-radius:10px;display:flex;flex-direction:column;gap:2px;transition:.15s}
+.rdm-model-item:hover{background:var(--panel2)}
+.rdm-model-item.sel{background:var(--accent)22;box-shadow:inset 0 0 0 1px var(--accent)55}
+.rdm-model-item-main{display:flex;align-items:center;justify-content:space-between}
+.rdm-model-item-label{font-weight:700;font-size:13.5px}
+.rdm-model-item-desc{font-size:11.5px;color:var(--muted)}
+.rdm-lock-mini{font-size:11px;opacity:.8}
+
+/* ---------- SCROLL / MESSAGES ---------- */
+.rdm-scroll{flex:1;overflow-y:auto;scroll-behavior:smooth}
+.rdm-scroll::-webkit-scrollbar{width:8px}
+.rdm-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.rdm-messages{max-width:820px;margin:0 auto;padding:26px 18px 10px;display:flex;flex-direction:column;gap:20px}
+.rdm-msg-row{display:flex;gap:12px;align-items:flex-start}
+.rdm-msg-row.user{flex-direction:row-reverse}
+.rdm-bubble{max-width:80%;padding:13px 16px;border-radius:16px;line-height:1.6;font-size:14.5px;
+  word-wrap:break-word;overflow-wrap:break-word}
+.rdm-bubble.ai{background:var(--panel);border:1px solid var(--border);border-top-left-radius:5px}
+.rdm-bubble.user{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-top-right-radius:5px}
+.rdm-msg-img{max-width:240px;border-radius:11px;margin-bottom:8px;display:block}
+
+/* ---------- MARKDOWN ---------- */
+.rdm-md h1{font-size:22px;margin:8px 0}
+.rdm-md h2{font-size:18px;margin:8px 0}
+.rdm-md h3{font-size:16px;margin:6px 0}
+.rdm-md ul{margin:6px 0;padding-left:20px}
+.rdm-md li{margin:3px 0}
+.rdm-md .rdm-inline{background:var(--bg);padding:2px 6px;border-radius:5px;font-size:13px;
+  font-family:'SF Mono',Menlo,Consolas,monospace}
+.rdm-code{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:0;
+  overflow-x:auto;margin:10px 0;position:relative}
+.rdm-code-lang{font-size:10.5px;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--border);
+  text-transform:uppercase;letter-spacing:.5px}
+.rdm-code code{display:block;padding:12px;font-family:'SF Mono',Menlo,Consolas,monospace;
+  font-size:12.5px;line-height:1.6;white-space:pre}
+
+/* ---------- TYPING ---------- */
+.rdm-typing{display:flex;gap:5px;padding:4px 2px}
+.rdm-typing span{width:8px;height:8px;border-radius:50%;background:var(--accent);
+  animation:typing 1.2s infinite ease-in-out}
+.rdm-typing span:nth-child(2){animation-delay:.2s}
+.rdm-typing span:nth-child(3){animation-delay:.4s}
+@keyframes typing{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-6px);opacity:1}}
+
+/* ---------- WELCOME ---------- */
+.rdm-welcome{text-align:center;padding:50px 20px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.rdm-welcome .rdm-logo-orb{margin-bottom:8px}
+.rdm-welcome h1{margin:6px 0;font-size:30px}
+.rdm-suggest-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px;width:100%;max-width:520px}
+.rdm-suggest-card{padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--panel);
+  font-size:13.5px;text-align:left;cursor:pointer;transition:.2s}
+.rdm-suggest-card:hover{border-color:var(--accent);transform:translateY(-2px);background:var(--panel2)}
+
+/* ---------- COMPOSER ---------- */
+.rdm-composer-wrap{padding:12px 18px 16px;max-width:820px;margin:0 auto;width:100%}
+.rdm-composer{border-radius:20px;padding:10px 12px}
+.rdm-toolbar{display:flex;gap:3px;padding-bottom:8px;margin-bottom:6px;border-bottom:1px solid var(--border);
+  flex-wrap:wrap}
+.rdm-tool-btn{border:none;background:none;color:var(--muted);cursor:pointer;padding:7px;
+  border-radius:8px;display:grid;place-items:center;transition:.15s}
+.rdm-tool-btn:hover{background:var(--panel2);color:var(--accent)}
+.rdm-input-row{display:flex;align-items:flex-end;gap:8px}
+.rdm-textarea-input{flex:1;background:none;border:none;color:var(--text);resize:none;outline:none;
+  font-size:14.5px;font-family:inherit;line-height:1.5;max-height:200px;padding:8px 4px}
+.rdm-send-btn{border:none;background:var(--panel2);color:var(--muted);cursor:pointer;
+  width:40px;height:40px;border-radius:12px;display:grid;place-items:center;transition:.2s;flex-shrink:0}
+.rdm-send-btn.ready{background:var(--accent);color:#fff}
+.rdm-send-btn.ready:hover{transform:translateY(-1px) scale(1.05)}
+.rdm-send-btn:disabled{cursor:not-allowed}
+.rdm-disclaimer{text-align:center;font-size:11px;color:var(--muted);margin-top:10px}
+
+/* ---------- ATTACHMENT ---------- */
+.rdm-attach-preview{display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg);
+  border:1px solid var(--border);border-radius:12px;margin-bottom:8px;position:relative}
+.rdm-attach-preview img{width:44px;height:44px;object-fit:cover;border-radius:8px}
+.rdm-attach-name{font-size:12.5px;color:var(--muted);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdm-attach-x{border:none;background:var(--panel2);color:var(--text);cursor:pointer;
+  width:26px;height:26px;border-radius:7px;display:grid;place-items:center}
+.rdm-attach-x:hover{background:var(--danger);color:#fff}
+
+/* ---------- MODALS ---------- */
+.rdm-modal-overlay{position:fixed;inset:0;background:rgba(4,5,10,.7);backdrop-filter:blur(4px);
+  display:grid;place-items:center;z-index:100;padding:20px}
+.rdm-modal-x{position:absolute;top:16px;right:16px;border:none;background:var(--panel2);
+  color:var(--text);cursor:pointer;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;transition:.2s}
+.rdm-modal-x:hover{background:var(--danger);color:#fff;transform:rotate(90deg)}
+
+/* ---------- SETTINGS ---------- */
+.rdm-settings-card{width:100%;max-width:520px;max-height:86vh;overflow-y:auto;border-radius:22px;padding:24px}
+.rdm-settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.rdm-settings-head h2{margin:0;font-size:20px}
+.rdm-settings-tabs{display:flex;gap:4px;background:var(--bg);border-radius:12px;padding:4px;margin-bottom:20px}
+.rdm-settings-tabs button{flex:1;padding:9px;border:none;background:none;color:var(--muted);
+  font-weight:600;border-radius:9px;cursor:pointer;font-size:13px;transition:.2s}
+.rdm-settings-tabs button.active{background:var(--accent);color:#fff}
+.rdm-field-label{display:block;font-size:13px;font-weight:600;margin-bottom:9px;color:var(--muted)}
+.rdm-theme-row{display:flex;gap:8px;margin-bottom:18px}
+.rdm-theme-chip{flex:1;padding:12px;border-radius:11px;border:2px solid var(--border);
+  cursor:pointer;text-transform:capitalize;font-size:12.5px;font-weight:600;color:var(--text);transition:.2s}
+.rdm-theme-chip.midnight{background:linear-gradient(135deg,#12131f,#7c6bff44)}
+.rdm-theme-chip.aurora{background:linear-gradient(135deg,#0a1b24,#00e0c644)}
+.rdm-theme-chip.mono{background:linear-gradient(135deg,#141416,#88888844)}
+.rdm-theme-chip.sel{border-color:var(--accent)}
+.rdm-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;
+  border-bottom:1px solid var(--border);cursor:pointer}
+.rdm-toggle-label{font-size:14px;font-weight:600}
+.rdm-toggle-desc{font-size:12px;color:var(--muted);margin-top:2px}
+.rdm-switch{width:44px;height:25px;border-radius:13px;background:var(--border);position:relative;transition:.2s;flex-shrink:0}
+.rdm-switch.on{background:var(--accent)}
+.rdm-switch-knob{position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;
+  background:#fff;transition:.25s cubic-bezier(.2,.8,.2,1)}
+.rdm-switch.on .rdm-switch-knob{left:22px}
+.rdm-range{width:100%;accent-color:var(--accent)}
+.rdm-settings-pro{text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0}
+.rdm-link-btn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;text-decoration:underline}
+
+/* ---------- PRO MODAL ---------- */
+.rdm-pro-card{width:100%;max-width:540px;max-height:88vh;overflow-y:auto;border-radius:24px;
+  padding:32px 26px;position:relative}
+.rdm-pro-hero{text-align:center;margin-bottom:22px}
+.rdm-crown{color:#ffb347;display:flex;justify-content:center;margin-bottom:6px}
+.rdm-pro-hero h2{margin:6px 0;font-size:26px}
+.rdm-discount-badge{display:inline-block;margin-top:12px;padding:7px 16px;border-radius:20px;
+  background:linear-gradient(90deg,#ff5c8a,#ffb347);color:#fff;font-weight:800;font-size:13px}
+.rdm-pro-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.rdm-pro-feature{display:flex;gap:12px;padding:15px;background:var(--panel2);border:1px solid var(--border);
+  border-radius:14px}
+.rdm-pro-feature-icon{font-size:24px;line-height:1}
+.rdm-pro-feature-title{font-weight:700;font-size:14px;margin-bottom:3px}
+.rdm-pro-feature-desc{font-size:12px;color:var(--muted);line-height:1.4}
+.rdm-pro-updates{background:var(--panel2);border:1px solid var(--border);border-radius:14px;
+  padding:16px;margin-bottom:18px}
+.rdm-pro-updates strong{font-size:14px}
+.rdm-pro-updates p{margin:6px 0 0}
+.rdm-pro-loginnote{background:#ffb34722;color:#ffcf8a;padding:13px;border-radius:12px;
+  text-align:center;font-size:13px;font-weight:600}
+.rdm-pro-active{background:#7bed9f22;color:#7bed9f;padding:13px;border-radius:12px;text-align:center;font-weight:700}
+.rdm-pro-buy{width:100%;font-size:15px;padding:15px}
+
+/* ---------- BACKDROP ---------- */
+.rdm-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:none}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width:860px){
+  .rdm-sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;transform:translateX(-100%);
+    box-shadow:8px 0 40px rgba(0,0,0,.5)}
+  .rdm-sidebar.open{transform:translateX(0)}
+  .rdm-backdrop{display:block}
+  .rdm-menu-btn{display:grid}
+  .rdm-bubble{max-width:88%}
+  .rdm-suggest-grid{grid-template-columns:1fr}
+  .rdm-pro-grid{grid-template-columns:1fr}
+  .rdm-model-name{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rdm-welcome h1{font-size:24px}
+}
+@media (max-width:480px){
+  .rdm-header{padding:10px 12px;gap:8px}
+  .rdm-pro-pill span:not(.rdm-crown){display:none}
+  .rdm-composer-wrap{padding:8px 10px 12px}
+  .rdm-messages{padding:16px 12px 8px}
+  .rdm-model-menu{width:min(290px,calc(100vw - 40px))}
+}
+`;
