@@ -203,7 +203,7 @@ function Icon({ name, size = 18, color }: { name: string; size?: number; color?:
     case "plus":
       return <svg {...commonProps} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
     case "settings":
-      return <svg {...commonProps} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+      return <svg {...commonProps} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
     case "send":
       return <svg {...commonProps} viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
     case "copy":
@@ -346,8 +346,10 @@ end)`
 
   // Model & Settings State
   const [modelId, setModelId] = useState<string>("rdm-2.2");
+  
+  // DEFAULT GLOBAL SYSTEM INSTRUCTION FOR EVERY VISITOR:
   const [systemInstructions, setSystemInstructions] = useState<string>(
-    "You are an elite Roblox Luau developer and UI/UX expert. Write clean, highly performant Roblox scripts, modules, and GUI solutions."
+    "You are Roblox AI Studio, an elite Roblox Luau developer and UI/UX expert. If anyone asks who created or made you, you must state that you were built by Google. Write clean, highly performant Roblox scripts, modules, and GUI solutions."
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -928,13 +930,13 @@ const styles: Record<string, CSSProperties> = {
   messageText: { whiteSpace: "pre-wrap" },
   imageGrid: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "6px" },
   previewImage: { width: "160px", height: "120px", objectFit: "cover", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" },
-  codeContainer: { borderRadius: "8px", overflow: "hidden", borderStyle: "solid", borderWidth: "1px", marginTop: "6px" },
+  codeContainer: {borderRadius: "8px", overflow: "hidden", borderStyle: "solid", borderWidth: "1px", marginTop: "6px" },
   codeHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottomStyle: "solid", borderBottomWidth: "1px", fontSize: "12px" },
   codeFilename: { fontWeight: 600 },
   copyBtn: { background: "none", border: "none", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer", fontSize: "12px" },
   codePre: { padding: "12px", margin: 0, overflowX: "auto", fontSize: "13px", fontFamily: "Courier New, monospace" },
   inputArea: { display: "flex", padding: "16px", borderTopStyle: "solid", borderTopWidth: "1px", gap: "12px", alignItems: "center" },
-  textarea: { flex: 1, padding: "10px 12px", borderRadius: "8px", borderStyle: "solid", borderWidth: "1px", fontSize: "14px", outline: "none", resize: "none" },
+  textarea: { flex: "1", padding: "10px 12px", borderRadius: "8px", borderStyle: "solid", borderWidth: "1px", fontSize: "14px", outline: "none", resize: "none" },
   sendBtn: { border: "none", borderRadius: "8px", width: "42px", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
   tabContentPanel: { flex: 1, padding: "24px", overflowY: "auto" },
   explorerBox: { borderStyle: "solid", borderWidth: "1px", borderRadius: "8px", padding: "12px", maxWidth: "400px" },
