@@ -1,9 +1,8 @@
 "use client";
-// App.jsx — RDM-ENGINE Chat Interface
+
+// app/page.tsx — RDM-ENGINE Chat Interface
 // A hyper-polished, feature-rich UI for an advanced AI engine.
 // ARCHITECTURE NOTE: This file contains ONLY the UI, state, layout & feature layer.
-// No LLM API calls live here — the host app injects the engine via `onSendToEngine`.
-// Identity, model routing, and Pro entitlements are surfaced but the "brain" is external.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
@@ -36,13 +35,13 @@ const MODELS = [
     id: "rdm-2.3-pro",
     label: "RDM 2.3 PRO",
     desc: "Super Deep Thinking, Codes Faster",
-    pro: false, // selectable, no visible "Pro" tag on selector per spec
+    pro: false, 
   },
   {
     id: "rdm-2.4-xor",
     label: "RDM 2.4 XOR",
     desc: "Ultra Thinking, Codes Ultra Fast, Good At GUIs",
-    pro: true, // restricted to Pro users
+    pro: true, 
   },
 ];
 
@@ -56,7 +55,7 @@ const LS_KEYS = {
 };
 
 const DEFAULT_SETTINGS = {
-  theme: "midnight", // midnight | aurora | mono
+  theme: "midnight", 
   rainbow: true,
   sound: true,
   animations: true,
@@ -70,7 +69,7 @@ const DEFAULT_SETTINGS = {
    ============================================================================ */
 
 const store = {
-  get(key, fallback) {
+  get(key: string, fallback: any) {
     try {
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : fallback;
@@ -78,26 +77,26 @@ const store = {
       return fallback;
     }
   },
-  set(key, val) {
+  set(key: string, val: any) {
     try {
       localStorage.setItem(key, JSON.stringify(val));
     } catch {
       /* quota / privacy mode — fail silently */
     }
   },
-  raw(key, fallback = "") {
+  raw(key: string, fallback = "") {
     try {
       return localStorage.getItem(key) ?? fallback;
     } catch {
       return fallback;
     }
   },
-  setRaw(key, val) {
+  setRaw(key: string, val: string) {
     try {
       localStorage.setItem(key, val);
     } catch {}
   },
-  remove(key) {
+  remove(key: string) {
     try {
       localStorage.removeItem(key);
     } catch {}
@@ -106,10 +105,9 @@ const store = {
 
 /* ============================================================================
    LIGHTWEIGHT PASSWORD HASHING (client-side, non-cryptographic salt+hash)
-   NOTE: This is a UI-layer credential store. Real auth should be server-side.
    ============================================================================ */
 
-async function hashPassword(password, salt) {
+async function hashPassword(password: string, salt: string) {
   const enc = new TextEncoder();
   const data = enc.encode(`${salt}::${password}`);
   if (window.crypto?.subtle) {
@@ -130,10 +128,10 @@ function makeSalt() {
 }
 
 /* ============================================================================
-   MARKDOWN → HTML (minimal, safe-ish renderer for chat bubbles)
+   MARKDOWN → HTML 
    ============================================================================ */
 
-function escapeHtml(str) {
+function escapeHtml(str: string) {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -141,10 +139,9 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-function renderMarkdown(md) {
+function renderMarkdown(md: string) {
   if (!md) return "";
-  // Extract code blocks first
-  const codeBlocks = [];
+  const codeBlocks: string[] = [];
   let text = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const idx = codeBlocks.length;
     codeBlocks.push(
@@ -157,24 +154,17 @@ function renderMarkdown(md) {
 
   text = escapeHtml(text);
 
-  // Headers
   text = text.replace(/^### (.*)$/gm, "<h3>$1</h3>");
   text = text.replace(/^## (.*)$/gm, "<h2>$1</h2>");
   text = text.replace(/^# (.*)$/gm, "<h1>$1</h1>");
-  // Bold / italic
   text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   text = text.replace(/\*(.+?)\*/g, "<em>$1</em>");
-  // Inline code
   text = text.replace(/`([^`]+?)`/g, '<code class="rdm-inline">$1</code>');
-  // Bullet lists
   text = text.replace(/^(?:- |\* )(.*)$/gm, "<li>$1</li>");
   text = text.replace(/(<li>[\s\S]*?<\/li>)/g, (m) =>
     m.includes("</li>\n") || true ? `<ul>${m.replace(/\n/g, "")}</ul>` : m
   );
-  // Line breaks
   text = text.replace(/\n/g, "<br/>");
-
-  // Restore code blocks
   text = text.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => codeBlocks[+i]);
   return text;
 }
@@ -183,7 +173,7 @@ function renderMarkdown(md) {
    AUTO CHAT TITLE GENERATOR
    ============================================================================ */
 
-function generateChatTitle(firstPrompt) {
+function generateChatTitle(firstPrompt: string) {
   if (!firstPrompt) return "New Chat";
   const cleaned = firstPrompt
     .replace(/[#*`_>~-]/g, "")
@@ -203,13 +193,13 @@ function generateChatTitle(firstPrompt) {
 }
 
 /* ============================================================================
-   SOUND FX (tiny WebAudio blips, respects settings)
+   SOUND FX
    ============================================================================ */
 
 function playBlip(freq = 660, dur = 0.08, enabled = true) {
   if (!enabled) return;
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     const ctx = new Ctx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -225,10 +215,10 @@ function playBlip(freq = 660, dur = 0.08, enabled = true) {
 }
 
 /* ============================================================================
-   ICONS (inline SVG, no deps)
+   ICONS
    ============================================================================ */
 
-const Icon = ({ path, size = 18, className = "" }) => (
+const Icon = ({ path, size = 18, className = "" }: any) => (
   <svg
     width={size}
     height={size}
@@ -317,8 +307,8 @@ const Icons = {
    AUTH SCREEN
    ============================================================================ */
 
-function AuthScreen({ onAuth, rainbow }) {
-  const [mode, setMode] = useState("login"); // login | register
+function AuthScreen({ onAuth, rainbow }: any) {
+  const [mode, setMode] = useState("login"); 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -326,7 +316,7 @@ function AuthScreen({ onAuth, rainbow }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
+  const submit = async (e: any) => {
     e.preventDefault();
     setError("");
     const em = email.trim().toLowerCase();
@@ -450,21 +440,21 @@ function AuthScreen({ onAuth, rainbow }) {
 }
 
 /* ============================================================================
-   MODEL SELECTOR (header dropdown)
+   MODEL SELECTOR 
    ============================================================================ */
 
-function ModelSelector({ current, onChange, isPro, onNeedPro, rainbow }) {
+function ModelSelector({ current, onChange, isPro, onNeedPro, rainbow }: any) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement>(null);
   const model = MODELS.find((m) => m.id === current) || MODELS[0];
 
   useEffect(() => {
-    const h = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
+    const h = (e: any) => ref.current && !ref.current.contains(e.target) && setOpen(false);
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const pick = (m) => {
+  const pick = (m: any) => {
     if (m.pro && !isPro) {
       setOpen(false);
       onNeedPro();
@@ -511,7 +501,7 @@ function ModelSelector({ current, onChange, isPro, onNeedPro, rainbow }) {
    PRO UPGRADE MODAL
    ============================================================================ */
 
-function ProModal({ open, onClose, user, onUpgrade, rainbow }) {
+function ProModal({ open, onClose, user, onUpgrade, rainbow }: any) {
   if (!open) return null;
   const loggedIn = !!user;
 
@@ -587,22 +577,14 @@ function ProModal({ open, onClose, user, onUpgrade, rainbow }) {
 }
 
 /* ============================================================================
-   SETTINGS PANEL (Studio Settings + System Prompt + Pro entry)
+   SETTINGS PANEL
    ============================================================================ */
 
-function SettingsPanel({
-  open,
-  onClose,
-  settings,
-  setSettings,
-  onOpenPro,
-  user,
-  rainbow,
-}) {
+function SettingsPanel({ open, onClose, settings, setSettings, onOpenPro, user, rainbow }: any) {
   const [tab, setTab] = useState("studio");
   if (!open) return null;
 
-  const update = (patch) => setSettings((s) => ({ ...s, ...patch }));
+  const update = (patch: any) => setSettings((s: any) => ({ ...s, ...patch }));
 
   return (
     <div className="rdm-modal-overlay fade-in" onClick={onClose}>
@@ -626,7 +608,7 @@ function SettingsPanel({
             <button
               key={k}
               className={tab === k ? "active" : ""}
-              onClick={() => setTab(k)}
+              onClick={() => setTab(k as string)}
             >
               {l}
             </button>
@@ -746,7 +728,7 @@ function SettingsPanel({
   );
 }
 
-function Toggle({ label, desc, on, onToggle }) {
+function Toggle({ label, desc, on, onToggle }: any) {
   return (
     <div className="rdm-toggle-row" onClick={onToggle}>
       <div>
@@ -764,7 +746,7 @@ function Toggle({ label, desc, on, onToggle }) {
    FORMATTING TOOLBAR
    ============================================================================ */
 
-function FormatToolbar({ onFormat, rainbow }) {
+function FormatToolbar({ onFormat, rainbow }: any) {
   const tools = [
     { key: "bold", icon: Icons.bold, title: "Bold", wrap: ["**", "**"] },
     {
@@ -817,7 +799,7 @@ function FormatToolbar({ onFormat, rainbow }) {
    CHAT MESSAGE BUBBLE
    ============================================================================ */
 
-function MessageBubble({ msg, rainbow }) {
+function MessageBubble({ msg, rainbow }: any) {
   const isUser = msg.role === "user";
   return (
     <div className={`rdm-msg-row ${isUser ? "user" : "ai"} fade-in-up`}>
@@ -840,7 +822,7 @@ function MessageBubble({ msg, rainbow }) {
   );
 }
 
-function TypingIndicator({ rainbow }) {
+function TypingIndicator({ rainbow }: any) {
   return (
     <div className="rdm-msg-row ai fade-in">
       <div className={`rdm-avatar ai ${rainbow ? "rainbow-orb" : ""}`}>
@@ -859,25 +841,22 @@ function TypingIndicator({ rainbow }) {
    MAIN APP
    ============================================================================ */
 
-export default function App({ onSendToEngine }) {
-  // --- Auth (NEVER auto-login; always start logged out) ---
-  const [user, setUser] = useState(null);
+// Removed custom props because Next.js Pages cannot accept them from the Router.
+export default function App() {
+  const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // --- Settings ---
   const [settings, setSettings] = useState(() =>
     store.get(LS_KEYS.settings, DEFAULT_SETTINGS)
   );
 
-  // --- Chats ---
-  const [chats, setChats] = useState(() => store.get(LS_KEYS.chats, []));
+  const [chats, setChats] = useState<any[]>(() => store.get(LS_KEYS.chats, []));
   const [activeId, setActiveId] = useState(() =>
     store.get(LS_KEYS.activeChat, null)
   );
 
-  // --- UI state ---
   const [input, setInput] = useState("");
-  const [attachment, setAttachment] = useState(null); // {dataUrl,name}
+  const [attachment, setAttachment] = useState<any>(null); 
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -885,30 +864,26 @@ export default function App({ onSendToEngine }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState("");
 
-  const textareaRef = useRef(null);
-  const fileRef = useRef(null);
-  const scrollRef = useRef(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const rainbow = settings.rainbow;
 
-  /* ---- Restore session on mount (validate against stored users) ---- */
   useEffect(() => {
     const session = store.get(LS_KEYS.session, null);
     if (session?.email) {
       const users = store.get(LS_KEYS.users, {});
       const rec = users[session.email];
-      // Only restore if a matching account exists — no hardcoded/auto owner login.
       if (rec) setUser({ name: rec.name, email: rec.email, pro: !!rec.pro });
     }
     setAuthChecked(true);
   }, []);
 
-  /* ---- Persist settings / chats / active ---- */
   useEffect(() => store.set(LS_KEYS.settings, settings), [settings]);
   useEffect(() => store.set(LS_KEYS.chats, chats), [chats]);
   useEffect(() => store.set(LS_KEYS.activeChat, activeId), [activeId]);
 
-  /* ---- Apply theme to root ---- */
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", settings.theme);
     document.documentElement.setAttribute(
@@ -917,14 +892,12 @@ export default function App({ onSendToEngine }) {
     );
   }, [settings.theme, settings.animations]);
 
-  /* ---- Draft: load when active chat changes ---- */
   useEffect(() => {
     if (!user) return;
     const draft = store.raw(LS_KEYS.draftPrefix + (activeId || "new"), "");
     setInput(draft);
   }, [activeId, user]);
 
-  /* ---- Draft: save on input change (debounced) ---- */
   useEffect(() => {
     if (!user) return;
     const t = setTimeout(() => {
@@ -938,7 +911,6 @@ export default function App({ onSendToEngine }) {
     [chats, activeId]
   );
 
-  /* ---- Auto-scroll ---- */
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -946,7 +918,6 @@ export default function App({ onSendToEngine }) {
     });
   }, [activeChat?.messages?.length, sending, settings.animations]);
 
-  /* ---- Auto-grow textarea ---- */
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -954,8 +925,7 @@ export default function App({ onSendToEngine }) {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }, [input]);
 
-  /* ================= AUTH HANDLERS ================= */
-  const handleAuth = (u) => {
+  const handleAuth = (u: any) => {
     setUser(u);
     store.set(LS_KEYS.session, { email: u.email });
     playBlip(880, 0.1, settings.sound);
@@ -967,7 +937,6 @@ export default function App({ onSendToEngine }) {
     setSidebarOpen(false);
   };
 
-  /* ================= CHAT HANDLERS ================= */
   const newChat = () => {
     setActiveId(null);
     setInput("");
@@ -975,13 +944,13 @@ export default function App({ onSendToEngine }) {
     setSidebarOpen(false);
   };
 
-  const deleteChat = (id) => {
+  const deleteChat = (id: string) => {
     setChats((cs) => cs.filter((c) => c.id !== id));
     store.remove(LS_KEYS.draftPrefix + id);
     if (activeId === id) setActiveId(null);
   };
 
-  const commitRename = (id) => {
+  const commitRename = (id: string) => {
     if (renameVal.trim())
       setChats((cs) =>
         cs.map((c) => (c.id === id ? { ...c, title: renameVal.trim() } : c))
@@ -990,8 +959,7 @@ export default function App({ onSendToEngine }) {
     setRenameVal("");
   };
 
-  /* ================= FORMATTING ================= */
-  const applyFormat = (tool) => {
+  const applyFormat = (tool: any) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
@@ -1010,8 +978,7 @@ export default function App({ onSendToEngine }) {
     });
   };
 
-  /* ================= IMAGE UPLOAD ================= */
-  const onPickImage = (e) => {
+  const onPickImage = (e: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
@@ -1022,7 +989,6 @@ export default function App({ onSendToEngine }) {
     e.target.value = "";
   };
 
-  /* ================= SEND ================= */
   const send = async () => {
     const text = input.trim();
     if ((!text && !attachment) || sending) return;
@@ -1048,7 +1014,6 @@ export default function App({ onSendToEngine }) {
             : c
         );
       }
-      // Create new chat with auto-generated title
       isNew = true;
       chatId = crypto.randomUUID?.() || String(Date.now());
       const newC = {
@@ -1068,7 +1033,6 @@ export default function App({ onSendToEngine }) {
     store.remove(LS_KEYS.draftPrefix + (activeId || "new"));
     setSending(true);
 
-    // --- Delegate to host engine (NO direct LLM calls here) ---
     try {
       let reply;
       const payload = {
@@ -1079,17 +1043,17 @@ export default function App({ onSendToEngine }) {
         image: userMsg.image,
       };
 
-      if (typeof onSendToEngine === "function") {
-        reply = await onSendToEngine(payload);
-      } else {
-        // Graceful placeholder when no host engine is wired in.
-        await new Promise((r) => setTimeout(r, 900));
-        reply =
-          "Hello! I'm **RDM-ENGINE**, made and developed by RDM-ENGINE. " +
-          "The host application will route your request to the selected model " +
-          `(*${MODELS.find((m) => m.id === settings.model)?.label}*). ` +
-          "This is a UI placeholder response.";
-      }
+      // NOTE FOR DEVELOPER:
+      // Replace this mock timeout block with your real Next.js API call:
+      // const res = await fetch('/api/chat', { method: 'POST', body: JSON.stringify(payload) });
+      // reply = await res.text();
+      
+      await new Promise((r) => setTimeout(r, 900));
+      reply =
+        "Hello! I'm **RDM-ENGINE**, made and developed by RDM-ENGINE. " +
+        "The host application will route your request to the selected model " +
+        `(*${MODELS.find((m) => m.id === settings.model)?.label}*). ` +
+        "This is a UI placeholder. Connect your Next.js `/api` route inside the `send` function to link your model!";
 
       const aiMsg = {
         id: crypto.randomUUID?.() || String(Date.now() + 1),
@@ -1123,7 +1087,7 @@ export default function App({ onSendToEngine }) {
     }
   };
 
-  const onKeyDown = (e) => {
+  const onKeyDown = (e: any) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -1131,21 +1095,18 @@ export default function App({ onSendToEngine }) {
   };
 
   const handleUpgrade = () => {
-    // Requires login (enforced in modal UI too)
     if (!user) return;
     const users = store.get(LS_KEYS.users, {});
     if (users[user.email]) {
       users[user.email].pro = true;
       store.set(LS_KEYS.users, users);
     }
-    setUser((u) => ({ ...u, pro: true }));
+    setUser((u: any) => ({ ...u, pro: true }));
     playBlip(1046, 0.15, settings.sound);
     setProOpen(false);
   };
 
   const needPro = () => setProOpen(true);
-
-  /* ================= RENDER ================= */
 
   if (!authChecked) {
     return (
@@ -1169,13 +1130,9 @@ export default function App({ onSendToEngine }) {
   return (
     <div className="rdm-root">
       <StyleSheet />
-
-      {/* Backdrop for mobile sidebar */}
       {sidebarOpen && (
         <div className="rdm-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
-
-      {/* ===================== SIDEBAR ===================== */}
       <aside className={`rdm-sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="rdm-sidebar-head">
           <div className="rdm-brand">
@@ -1271,9 +1228,7 @@ export default function App({ onSendToEngine }) {
         </div>
       </aside>
 
-      {/* ===================== MAIN ===================== */}
       <main className="rdm-main">
-        {/* HEADER */}
         <header className="rdm-header">
           <button
             className="rdm-icon-btn rdm-menu-btn"
@@ -1284,7 +1239,7 @@ export default function App({ onSendToEngine }) {
 
           <ModelSelector
             current={settings.model}
-            onChange={(m) => setSettings((s) => ({ ...s, model: m }))}
+            onChange={(m: any) => setSettings((s: any) => ({ ...s, model: m }))}
             isPro={!!user.pro}
             onNeedPro={needPro}
             rainbow={rainbow}
@@ -1309,13 +1264,12 @@ export default function App({ onSendToEngine }) {
           </div>
         </header>
 
-        {/* MESSAGES */}
         <div className="rdm-scroll" ref={scrollRef}>
           <div className="rdm-messages">
             {!activeChat || activeChat.messages.length === 0 ? (
               <WelcomeState rainbow={rainbow} name={user.name} />
             ) : (
-              activeChat.messages.map((m) => (
+              activeChat.messages.map((m: any) => (
                 <MessageBubble key={m.id} msg={m} rainbow={rainbow} />
               ))
             )}
@@ -1323,7 +1277,6 @@ export default function App({ onSendToEngine }) {
           </div>
         </div>
 
-        {/* COMPOSER */}
         <div className="rdm-composer-wrap">
           <div className={`rdm-composer glass ${rainbow ? "rainbow-border" : ""}`}>
             <FormatToolbar onFormat={applyFormat} rainbow={rainbow} />
@@ -1384,7 +1337,6 @@ export default function App({ onSendToEngine }) {
         </div>
       </main>
 
-      {/* MODALS */}
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -1409,7 +1361,7 @@ export default function App({ onSendToEngine }) {
    WELCOME STATE
    ============================================================================ */
 
-function WelcomeState({ rainbow, name }) {
+function WelcomeState({ rainbow, name }: any) {
   const suggestions = [
     "Build me a landing page in React",
     "Explain quantum computing simply",
@@ -1440,7 +1392,7 @@ function WelcomeState({ rainbow, name }) {
 }
 
 /* ============================================================================
-   STYLES (injected once) — themes, rainbow, animations, responsive
+   STYLES (injected once)
    ============================================================================ */
 
 function StyleSheet() {
