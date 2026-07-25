@@ -12,10 +12,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Since this is a LoRA adapter repository, we query the router 
-    // and pass your adapter as part of the payload or target your model space
+    // Target a standard compatible base model, and pass your custom LoRA adapter inside parameters
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/mrfirex79/RDM-ENGINE",
+      "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-7B-Instruct",
       {
         method: "POST",
         headers: {
@@ -25,6 +24,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           inputs: prompt,
           parameters: {
+            adapter_id: "mrfirex79/RDM-ENGINE",
             max_new_tokens: 256,
             temperature: 0.7,
           },
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: `HF Adapter error: ${JSON.stringify(data)}` },
+        { error: `API error: ${JSON.stringify(data)}` },
         { status: response.status }
       );
     }
@@ -50,4 +50,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-  }
+}
