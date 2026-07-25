@@ -1,3 +1,4 @@
+"use client";
 // RobloxAIStudio.tsx
 // A self-contained, production-ready Roblox AI Studio interface.
 // No external dependencies beyond React. All styling is inline + a small injected stylesheet.
