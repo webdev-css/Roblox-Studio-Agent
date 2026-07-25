@@ -6,10 +6,10 @@ export async function POST(req: Request) {
     const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
-      // Sending errors inside the "response" key ensures your frontend displays it!
+      // Forcing success: true so your frontend displays this text instead of hiding it!
       return NextResponse.json({ 
-        success: false, 
-        response: "Error: OPENROUTER_API_KEY environment variable is missing on server." 
+        success: true, 
+        response: "🚨 ERROR: OPENROUTER_API_KEY is missing from environment variables." 
       });
     }
 
@@ -20,17 +20,16 @@ export async function POST(req: Request) {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://your-app.com",
-          "X-Title": "My AI App",
+          "HTTP-Referer": "https://myapp.com",
+          "X-Title": "My AI App"
         },
         body: JSON.stringify({
-          // 🛑 THE MAGIC FIX: This router randomly selects from the best 100% FREE models!
           model: "openrouter/free", 
           messages: [
             {
               role: "user",
               content: prompt,
-            },
+            }
           ],
         }),
       }
@@ -38,23 +37,24 @@ export async function POST(req: Request) {
 
     const data = await response.json();
 
-    // If OpenRouter blocks the request (e.g., bad API key, rate limit), print the exact error in the chat
+    // If OpenRouter blocks the request, print the exact JSON error into the chat window
     if (!response.ok) {
-      const errorMessage = data.error?.message || JSON.stringify(data);
       return NextResponse.json({ 
-        success: false, 
-        response: `OpenRouter API Error: ${errorMessage}` 
+        success: true, 
+        response: `🚨 OPENROUTER API ERROR: ${JSON.stringify(data)}` 
       });
     }
 
     // Safely extract the message text
-    const reply = data.choices?.[0]?.message?.content || "The AI returned an empty response.";
+    const reply = data.choices?.[0]?.message?.content || "Empty response from OpenRouter.";
 
     return NextResponse.json({ success: true, response: reply });
+
   } catch (error: any) {
+    // If the server crashes, print the crash log into the chat window
     return NextResponse.json({ 
-      success: false, 
-      response: `Server Error: ${error.message}` 
+      success: true, 
+      response: `🚨 SERVER CRASH: ${error.message}` 
     });
   }
-        }
+  }
