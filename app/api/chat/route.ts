@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { model, system, messages, temperature } = await request.json();
+    const { system, messages, temperature } = await request.json();
 
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -12,17 +12,10 @@ export async function POST(request) {
       );
     }
 
-    // Map your local model names to actual OpenRouter model IDs (update these if you use specific models)
-    let openRouterModel = 'deepseek/deepseek-chat'; // default fallback
-    if (model === 'rdm-2.1-common') openRouterModel = 'deepseek/deepseek-chat';
-    if (model === 'rdm-2.2-common') openRouterModel = 'deepseek/deepseek-r1';
-    if (model === 'rdm-2.3-pro') openRouterModel = 'anthropic/claude-3.5-sonnet';
-    if (model === 'rdm-2.4-xor') openRouterModel = 'anthropic/claude-3.5-sonnet';
-
-    // Format messages for OpenRouter / OpenAI standard structure
+    // Format messages for OpenRouter
     const formattedMessages = [
-      { role: 'system', content: system || 'You are RDM-ENGINE.' },
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'system', content: system || 'You are RDM-ENGINE, built by Google.' },
+      ...(Array.isArray(messages) ? messages.map((m) => ({ role: m.role, content: m.content })) : []),
     ];
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -34,7 +27,8 @@ export async function POST(request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: openRouterModel,
+        // Forces OpenRouter to use its free auto-routing tier (requires zero account balance)
+        model: 'openrouter/free',
         messages: formattedMessages,
         temperature: temperature || 0.7,
       }),
@@ -57,4 +51,4 @@ export async function POST(request) {
     console.error('API Route Exception:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  }
+          }
