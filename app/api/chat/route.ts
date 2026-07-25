@@ -6,10 +6,11 @@ export async function POST(req: Request) {
     const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENROUTER_API_KEY environment variable is missing on server." },
-        { status: 500 }
-      );
+      // Sending errors inside the "response" key ensures your frontend displays it!
+      return NextResponse.json({ 
+        success: false, 
+        response: "Error: OPENROUTER_API_KEY environment variable is missing on server." 
+      });
     }
 
     const response = await fetch(
@@ -19,11 +20,12 @@ export async function POST(req: Request) {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://your-app-name.onrender.com",
+          "HTTP-Referer": "https://your-app.com",
           "X-Title": "My AI App",
         },
         body: JSON.stringify({
-          model: "openai/gpt-4o-mini", // Using a reliable, fast, widely supported model
+          // 🛑 THE MAGIC FIX: This router randomly selects from the best 100% FREE models!
+          model: "openrouter/free", 
           messages: [
             {
               role: "user",
@@ -36,25 +38,23 @@ export async function POST(req: Request) {
 
     const data = await response.json();
 
+    // If OpenRouter blocks the request (e.g., bad API key, rate limit), print the exact error in the chat
     if (!response.ok) {
-      return NextResponse.json(
-        { error: `API error: ${JSON.stringify(data)}` },
-        { status: response.status }
-      );
+      const errorMessage = data.error?.message || JSON.stringify(data);
+      return NextResponse.json({ 
+        success: false, 
+        response: `OpenRouter API Error: ${errorMessage}` 
+      });
     }
 
-    // Safely extract the message text across different OpenRouter response schemas
-    const reply = 
-      data.choices?.[0]?.message?.content || 
-      data.choices?.[0]?.text || 
-      data.response || 
-      JSON.stringify(data); // This fallback will show you the exact raw response if it's structured differently
+    // Safely extract the message text
+    const reply = data.choices?.[0]?.message?.content || "The AI returned an empty response.";
 
     return NextResponse.json({ success: true, response: reply });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: `Error processing request: ${error.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ 
+      success: false, 
+      response: `Server Error: ${error.message}` 
+    });
   }
-      }
+        }
