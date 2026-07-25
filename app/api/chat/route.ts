@@ -19,11 +19,11 @@ export async function POST(req: Request) {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://your-app-name.onrender.com", // Optional: your Render app URL
-          "X-Title": "My AI App", // Optional: app name for OpenRouter leaderboards
+          "HTTP-Referer": "https://your-app-name.onrender.com",
+          "X-Title": "My AI App",
         },
         body: JSON.stringify({
-          model: "openrouter/auto", // Automatically routes requests to the best available model
+          model: "openai/gpt-4o-mini", // Using a reliable, fast, widely supported model
           messages: [
             {
               role: "user",
@@ -43,7 +43,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const reply = data.choices?.[0]?.message?.content || "No response generated";
+    // Safely extract the message text across different OpenRouter response schemas
+    const reply = 
+      data.choices?.[0]?.message?.content || 
+      data.choices?.[0]?.text || 
+      data.response || 
+      JSON.stringify(data); // This fallback will show you the exact raw response if it's structured differently
 
     return NextResponse.json({ success: true, response: reply });
   } catch (error: any) {
@@ -52,4 +57,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-          }
+      }
