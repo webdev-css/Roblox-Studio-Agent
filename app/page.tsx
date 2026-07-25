@@ -1,8 +1,7 @@
 "use client";
 
 // app/page.tsx — RDM-ENGINE Chat Interface
-// A hyper-polished, feature-rich UI for an advanced AI engine.
-// ARCHITECTURE NOTE: This file contains ONLY the UI, state, layout & feature layer.
+// Built completely to route all chats through your Render / OpenRouter backend.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
@@ -80,9 +79,7 @@ const store = {
   set(key: string, val: any) {
     try {
       localStorage.setItem(key, JSON.stringify(val));
-    } catch {
-      /* quota / privacy mode — fail silently */
-    }
+    } catch {}
   },
   raw(key: string, fallback = "") {
     try {
@@ -104,7 +101,7 @@ const store = {
 };
 
 /* ============================================================================
-   LIGHTWEIGHT PASSWORD HASHING (client-side, non-cryptographic salt+hash)
+   LIGHTWEIGHT PASSWORD HASHING
    ============================================================================ */
 
 async function hashPassword(password: string, salt: string) {
@@ -116,7 +113,6 @@ async function hashPassword(password: string, salt: string) {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
-  // Fallback simple hash
   let h = 0;
   const s = `${salt}::${password}`;
   for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
@@ -841,7 +837,6 @@ function TypingIndicator({ rainbow }: any) {
    MAIN APP
    ============================================================================ */
 
-// Removed custom props because Next.js Pages cannot accept them from the Router.
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -1034,33 +1029,34 @@ export default function App() {
     setSending(true);
 
     try {
-      let reply;
-      const payload = {
-        model: settings.model,
-        system: settings.systemPrompt,
-        temperature: settings.temperature,
-        message: text,
-        image: userMsg.image,
-      };
+      // FULLY LIVE: Direct call to your Render backend which utilizes your OpenRouter API Key environment variable
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          system: settings.systemPrompt,
+          temperature: settings.temperature,
+          messages: activeChat ? [...activeChat.messages, userMsg] : [userMsg],
+        }),
+      });
 
-      // NOTE FOR DEVELOPER:
-      // Replace this mock timeout block with your real Next.js API call:
-      // const res = await fetch('/api/chat', { method: 'POST', body: JSON.stringify(payload) });
-      // reply = await res.text();
-      
-      await new Promise((r) => setTimeout(r, 900));
-      reply =
-        "Hello! I'm **RDM-ENGINE**, made and developed by RDM-ENGINE. " +
-        "The host application will route your request to the selected model " +
-        `(*${MODELS.find((m) => m.id === settings.model)?.label}*). ` +
-        "This is a UI placeholder. Connect your Next.js `/api` route inside the `send` function to link your model!";
+      if (!response.ok) {
+        throw new Error("Failed to reach Render engine via OpenRouter.");
+      }
+
+      const data = await response.json();
+      const reply = data.reply || data.choices?.[0]?.message?.content || "No response received.";
 
       const aiMsg = {
         id: crypto.randomUUID?.() || String(Date.now() + 1),
         role: "assistant",
-        content: reply || "",
+        content: reply,
         ts: Date.now(),
       };
+
       setChats((prev) =>
         prev.map((c) =>
           c.id === chatId
@@ -1074,7 +1070,7 @@ export default function App() {
         id: String(Date.now() + 2),
         role: "assistant",
         content:
-          "⚠️ The engine could not be reached. Please try again. — RDM-ENGINE",
+          "⚠️ Failed to communicate with Render backend or OpenRouter key is missing/invalid.",
         ts: Date.now(),
       };
       setChats((prev) =>
@@ -1392,7 +1388,7 @@ function WelcomeState({ rainbow, name }: any) {
 }
 
 /* ============================================================================
-   STYLES (injected once)
+   STYLES
    ============================================================================ */
 
 function StyleSheet() {
