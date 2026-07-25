@@ -520,7 +520,7 @@ end)`
         <div
           style={{
             display: "flex",
-            alignItem: "center",
+            alignItems: "center",
             padding: `6px 8px 6px ${12 + depth * 16}px`,
             cursor: "pointer",
             backgroundColor: isSelected ? t.border : "transparent",
@@ -947,5 +947,3 @@ const styles = {
   themeOptionBtn: { padding: "8px 16px", borderRadius: "6px", borderStyle: "solid", borderWidth: "1px", cursor: "pointer", fontWeight: 500, fontSize: "13px" },
   input: { padding: "8px 12px", borderRadius: "6px", borderStyle: "solid", borderWidth: "1px", fontSize: "13px", outline: "none" },
 };
-
-export default RobloxAIStudio;
