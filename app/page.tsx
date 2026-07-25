@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, CSSProperties } from "react";
 
 /* ============================================================================
    TYPES & INTERFACES
@@ -897,8 +897,8 @@ end)`
    STYLESHEET
    ============================================================================ */
 
-const styles = {
-  container: { display: "flex", flexDirection: "column" as const, height: "100vh", width: "100vw", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+const styles: Record<string, CSSProperties> = {
+  container: { display: "flex", flexDirection: "column", height: "100vh", width: "100vw", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", height: "60px", padding: "0 16px", borderBottomWidth: "1px", borderBottomStyle: "solid", zIndex: 10 },
   headerLeft: { display: "flex", alignItems: "center", gap: "12px" },
   logoArea: { display: "flex", alignItems: "center", gap: "8px" },
@@ -911,35 +911,35 @@ const styles = {
   iconBtn: { background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center" },
   authBtn: { display: "flex", alignItems: "center", gap: "6px", border: "none", padding: "6px 14px", borderRadius: "6px", color: "#fff", fontWeight: 600, fontSize: "13px", cursor: "pointer" },
   mainBody: { display: "flex", flex: 1, overflow: "hidden" },
-  sidebar: { width: "260px", borderRightWidth: "1px", borderRightStyle: "solid", display: "flex", flexDirection: "column" as const },
+  sidebar: { width: "260px", borderRightWidth: "1px", borderRightStyle: "solid", display: "flex", flexDirection: "column" },
   sidebarTop: { padding: "12px" },
   newChatBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "10px", borderRadius: "6px", border: "none", fontWeight: 600, cursor: "pointer", fontSize: "13px" },
-  sessionList: { flex: 1, overflowY: "auto" as const, padding: "0 8px", display: "flex", flexDirection: "column" as const, gap: "4px" },
+  sessionList: { flex: 1, overflowY: "auto", padding: "0 8px", display: "flex", flexDirection: "column", gap: "4px" },
   sessionItem: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "13px" },
-  sessionTitle: { whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", flex: 1 },
+  sessionTitle: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 },
   deleteSessionBtn: { background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", padding: "2px" },
   sidebarFooter: { padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)" },
-  contentArea: { flex: 1, display: "flex", flexDirection: "column" as const, overflow: "hidden" },
-  chatContainer: { display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden" },
-  messageScroll: { flex: 1, overflowY: "auto" as const, padding: "20px", display: "flex", flexDirection: "column" as const, gap: "16px" },
-  emptyState: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center" as const },
+  contentArea: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  chatContainer: { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" },
+  messageScroll: { flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: "16px" },
+  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center" },
   messageRow: { display: "flex", width: "100%" },
-  messageBubble: { maxWidth: "80%", padding: "12px 16px", borderRadius: "12px", borderStyle: "solid", borderWidth: "1px", display: "flex", flexDirection: "column" as const, gap: "10px", fontSize: "14px", lineHeight: 1.5 },
-  messageText: { whiteSpace: "pre-wrap" as const },
-  imageGrid: { display: "flex", gap: "10px", flexWrap: "wrap" as const, marginTop: "6px" },
-  previewImage: { width: "160px", height: "120px", objectFit: "cover" as const, borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" },
+  messageBubble: { maxWidth: "80%", padding: "12px 16px", borderRadius: "12px", borderStyle: "solid", borderWidth: "1px", display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px", lineHeight: 1.5 },
+  messageText: { whiteSpace: "pre-wrap" },
+  imageGrid: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "6px" },
+  previewImage: { width: "160px", height: "120px", objectFit: "cover", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" },
   codeContainer: { borderRadius: "8px", overflow: "hidden", borderStyle: "solid", borderWidth: "1px", marginTop: "6px" },
   codeHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottomStyle: "solid", borderBottomWidth: "1px", fontSize: "12px" },
   codeFilename: { fontWeight: 600 },
   copyBtn: { background: "none", border: "none", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer", fontSize: "12px" },
-  codePre: { padding: "12px", margin: 0, overflowX: "auto" as const, fontSize: "13px", fontFamily: "Courier New, monospace" },
+  codePre: { padding: "12px", margin: 0, overflowX: "auto", fontSize: "13px", fontFamily: "Courier New, monospace" },
   inputArea: { display: "flex", padding: "16px", borderTopStyle: "solid", borderTopWidth: "1px", gap: "12px", alignItems: "center" },
-  textarea: { flex: 1, padding: "10px 12px", borderRadius: "8px", borderStyle: "solid", borderWidth: "1px", fontSize: "14px", outline: "none", resize: "none" as const },
+  textarea: { flex: 1, padding: "10px 12px", borderRadius: "8px", borderStyle: "solid", borderWidth: "1px", fontSize: "14px", outline: "none", resize: "none" },
   sendBtn: { border: "none", borderRadius: "8px", width: "42px", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
-  tabContentPanel: { flex: 1, padding: "24px", overflowY: "auto" as const },
+  tabContentPanel: { flex: 1, padding: "24px", overflowY: "auto" },
   explorerBox: { borderStyle: "solid", borderWidth: "1px", borderRadius: "8px", padding: "12px", maxWidth: "400px" },
   adminTableWrapper: { borderStyle: "solid", borderWidth: "1px", borderRadius: "8px", overflow: "hidden", maxWidth: "800px" },
-  adminTable: { width: "100%", borderCollapse: "collapse" as const, textAlign: "left" as const, fontSize: "13px" },
+  adminTable: { width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" },
   th: { padding: "12px 16px", fontWeight: 600 },
   td: { padding: "12px 16px" },
   roleBadge: { padding: "2px 8px", borderRadius: "4px", color: "#fff", fontSize: "11px", fontWeight: 600 },
