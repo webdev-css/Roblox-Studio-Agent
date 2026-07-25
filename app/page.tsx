@@ -1,3 +1,4 @@
+"use client";
 // App.jsx — RDM-ENGINE Chat Interface
 // A hyper-polished, feature-rich UI for an advanced AI engine.
 // ARCHITECTURE NOTE: This file contains ONLY the UI, state, layout & feature layer.
