@@ -1029,7 +1029,6 @@ export default function App() {
     setSending(true);
 
     try {
-      // FULLY LIVE: Direct call to your Render backend which utilizes your OpenRouter API Key environment variable
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -1092,14 +1091,9 @@ export default function App() {
 
   const handleUpgrade = () => {
     if (!user) return;
-    const users = store.get(LS_KEYS.users, {});
-    if (users[user.email]) {
-      users[user.email].pro = true;
-      store.set(LS_KEYS.users, users);
-    }
-    setUser((u: any) => ({ ...u, pro: true }));
-    playBlip(1046, 0.15, settings.sound);
-    setProOpen(false);
+    
+    // Displays the payment method notice
+    alert("No Payment Method Yet.");
   };
 
   const needPro = () => setProOpen(true);
