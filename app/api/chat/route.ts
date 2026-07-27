@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     });
 
     return Response.json({ result: completion.choices[0].message.content });
-  } catch (error) {
+  } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
       }
