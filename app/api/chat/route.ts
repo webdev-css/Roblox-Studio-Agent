@@ -1,54 +1,30 @@
-import { NextResponse } from 'next/server';
+import OpenAI from "openai";
 
-export async function POST(request) {
+const client = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+export async function POST(req: Request) {
   try {
-    const { system, messages, temperature } = await request.json();
+    const { prompt } = await req.json();
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'OPENROUTER_API_KEY is missing on the server.' },
-        { status: 500 }
-      );
-    }
-
-    // Format messages for OpenRouter
-    const formattedMessages = [
-      { role: 'system', content: system || 'You are RDM-ENGINE, built by Google.' },
-      ...(Array.isArray(messages) ? messages.map((m) => ({ role: m.role, content: m.content })) : []),
-    ];
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://rdm-engine.onrender.com', // Optional: your site URL
-        'X-Title': 'RDM-ENGINE', // Optional: your app name
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        // Forces OpenRouter to use its free auto-routing tier (requires zero account balance)
-        model: 'openrouter/free',
-        messages: formattedMessages,
-        temperature: temperature || 0.7,
-      }),
+    const completion = await client.chat.completions.create({
+      model: "poolside/laguna-s-2.1:free",
+      messages: [
+        {
+          role: "system",
+          content: "You are RDM-ENGINE, an elite Roblox Luau developer and UI/UX expert developed by Google. Provide clean, high-performance Roblox scripts and technical solutions."
+        },
+        { 
+          role: "user", 
+          content: prompt 
+        }
+      ],
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('OpenRouter Error:', errText);
-      return NextResponse.json(
-        { error: `OpenRouter error: ${errText}` },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content || 'No response generated.';
-
-    return NextResponse.json({ reply });
+    return Response.json({ result: completion.choices[0].message.content });
   } catch (error) {
-    console.error('API Route Exception:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error.message }, { status: 500 });
   }
-          }
+      }
