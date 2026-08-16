@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
     // Format messages for OpenRouter
     const formattedMessages = [
-      { role: "system", content: system || "You are a helpful assistant." },
+      { role: "system", content: system || "You are an expert Roblox script and UI developer." },
       ...messages.map((m: any) => ({
         role: m.role,
         content: m.content,
@@ -30,28 +30,21 @@ export async function POST(req: Request) {
         "X-Title": "Roblox Studio Agent",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini", // Change to match your preferred OpenRouter model id if needed
+        // Using the free tier model ID
+        model: "nvidia/nemotron-3-ultra-550b-a55b:free", 
         messages: formattedMessages,
-        temperature: temperature || 0.7,
+        // Lower temperature (0.2) is better for code accuracy/Roblox syntax
+        temperature: temperature || 0.2, 
       }),
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || "Failed to fetch from OpenRouter" },
-        { status: response.status }
-      );
-    }
-
-    const reply = data.choices?.[0]?.message?.content || "No response received.";
-    return NextResponse.json({ reply });
+    return NextResponse.json(data);
 
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error.message || "Internal Server Error" },
       { status: 500 }
     );
   }
-        }
+      }
