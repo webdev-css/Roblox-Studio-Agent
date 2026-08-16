@@ -63,6 +63,9 @@ const DEFAULT_SETTINGS = {
   model: "rdm-2.1-common",
 };
 
+// Interactive status steps shown before each AI response.
+const STATUS_STEPS = ["Thinking...", "Searching Through Asset Store..."];
+
 /* ============================================================================
    LOCALSTORAGE HELPERS (rock-solid, guarded)
    ============================================================================ */
@@ -297,6 +300,12 @@ const Icons = {
     </>
   ),
   check: <polyline points="20 6 9 17 4 12" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </>
+  ),
 };
 
 /* ============================================================================
@@ -834,6 +843,33 @@ function TypingIndicator({ rainbow }: any) {
 }
 
 /* ============================================================================
+   STATUS STEPS ("Thinking..." / "Searching Through Asset Store...")
+   ============================================================================ */
+
+function StatusSteps({ step, rainbow }: any) {
+  const isSearch = /search/i.test(step);
+  return (
+    <div className="rdm-msg-row ai fade-in">
+      <div className={`rdm-avatar ai ${rainbow ? "rainbow-orb" : ""}`}>
+        <Icon path={Icons.sparkle} size={16} />
+      </div>
+      <div className="rdm-bubble ai">
+        <div className="rdm-status-step">
+          {isSearch ? (
+            <Icon path={Icons.search} size={15} className="rdm-status-spin" />
+          ) : (
+            <span className="rdm-status-dot" />
+          )}
+          <span className={`rdm-status-text ${rainbow ? "rainbow-text" : ""}`}>
+            {step}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
    MAIN APP
    ============================================================================ */
 
@@ -853,6 +889,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<any>(null); 
   const [sending, setSending] = useState(false);
+  const [statusStep, setStatusStep] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [proOpen, setProOpen] = useState(false);
@@ -911,7 +948,7 @@ export default function App() {
       top: scrollRef.current.scrollHeight,
       behavior: settings.animations ? "smooth" : "auto",
     });
-  }, [activeChat?.messages?.length, sending, settings.animations]);
+  }, [activeChat?.messages?.length, sending, statusStep, settings.animations]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -984,6 +1021,15 @@ export default function App() {
     e.target.value = "";
   };
 
+  // Runs the interactive status steps before the AI response.
+  const runStatusSteps = async () => {
+    for (const step of STATUS_STEPS) {
+      setStatusStep(step);
+      await new Promise((r) => setTimeout(r, settings.animations ? 850 : 0));
+    }
+    setStatusStep(null);
+  };
+
   const send = async () => {
     const text = input.trim();
     if ((!text && !attachment) || sending) return;
@@ -1027,6 +1073,9 @@ export default function App() {
     setAttachment(null);
     store.remove(LS_KEYS.draftPrefix + (activeId || "new"));
     setSending(true);
+
+    // Show the required interactive status animations first.
+    await runStatusSteps();
 
     try {
       const response = await fetch("/api/chat", {
@@ -1079,6 +1128,7 @@ export default function App() {
       );
     } finally {
       setSending(false);
+      setStatusStep(null);
     }
   };
 
@@ -1263,7 +1313,11 @@ export default function App() {
                 <MessageBubble key={m.id} msg={m} rainbow={rainbow} />
               ))
             )}
-            {sending && <TypingIndicator rainbow={rainbow} />}
+            {statusStep ? (
+              <StatusSteps step={statusStep} rainbow={rainbow} />
+            ) : (
+              sending && <TypingIndicator rainbow={rainbow} />
+            )}
           </div>
         </div>
 
@@ -1606,6 +1660,15 @@ kbd{background:var(--panel2);border:1px solid var(--border);border-radius:5px;
 .rdm-typing span:nth-child(2){animation-delay:.2s}
 .rdm-typing span:nth-child(3){animation-delay:.4s}
 @keyframes typing{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-6px);opacity:1}}
+
+/* ---------- STATUS STEPS ---------- */
+.rdm-status-step{display:flex;align-items:center;gap:9px;padding:2px 0}
+.rdm-status-text{font-size:13.5px;font-weight:600;color:var(--text)}
+.rdm-status-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 10px var(--accent);animation:statusPing 1s ease-in-out infinite}
+.rdm-status-spin{color:var(--accent2);animation:statusSpin 1.1s linear infinite}
+@keyframes statusPing{0%,100%{transform:scale(.85);opacity:.6}50%{transform:scale(1.15);opacity:1}}
+@keyframes statusSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
 /* ---------- WELCOME ---------- */
 .rdm-welcome{text-align:center;padding:50px 20px;display:flex;flex-direction:column;align-items:center;gap:8px}
