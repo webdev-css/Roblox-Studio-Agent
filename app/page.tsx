@@ -4,7 +4,7 @@
    app/page.tsx — RDM-ENGINE
    Roblox Studio AI Builder
    --------------------------------------------------------------------------
-   SYSTEMS INCLUDED
+   SYSTEMS
    1. Thinking System        -> animated multi-phase reasoning trace
    2. Searching System       -> asset/API search animation for code generation
    3. Luau-Only Engine       -> only Luau output, always answers "Roblox Studio"
@@ -12,6 +12,8 @@
    5. Custom Asset Store     -> publish + download .rbxm / .rbxmx files
    6. DataStore System       -> unified persistence layer for everything
    7. UI Mastery             -> GUI-focused prompting + UI preset launcher
+   8. Copy System            -> copy replies, copy code, save .luau files
+   9. Discord                -> join button across landing + dashboard
    --------------------------------------------------------------------------
    API CONTRACT UNCHANGED:
    POST /api/chat  { model, system, temperature, messages }
@@ -26,8 +28,10 @@ import React, {
 } from "react";
 
 /* ============================================================================
-   IDENTITY / PROMPTS
+   IDENTITY / LINKS / PROMPTS
    ============================================================================ */
+
+const DISCORD_URL = "https://discord.gg/JGvh2UZHcu";
 
 const IDENTITY = {
   name: "RDM-ENGINE",
@@ -149,13 +153,7 @@ const ASSET_CATEGORIES = [
 const MAX_ASSET_BYTES = 900_000; // ~0.9 MB raw -> ~1.2 MB base64
 
 /* ============================================================================
-   1. DATASTORE SYSTEM
-   A tiny persistent store engine used by EVERY feature of the app.
-   - localStorage backed
-   - in-memory cache
-   - pub/sub + React hook
-   - cross-tab sync
-   - quota-safe writes
+   6. DATASTORE SYSTEM
    ============================================================================ */
 
 type Listener<T> = (value: T) => void;
@@ -275,8 +273,6 @@ class DataStore<T> {
   }
 }
 
-/* ---- Every store in the app ---- */
-
 const DS = {
   users: new DataStore<Record<string, any>>("rdm.ds.users.v2", {}),
   session: new DataStore<any>("rdm.ds.session.v2", null),
@@ -288,7 +284,7 @@ const DS = {
   handoff: new DataStore<string>("rdm.ds.handoff.v2", ""),
   stats: new DataStore(
     "rdm.ds.stats.v2",
-    { messages: 0, scripts: 0, downloads: 0, publishes: 0 },
+    { messages: 0, scripts: 0, downloads: 0, publishes: 0, copies: 0 },
     true
   ),
 };
@@ -318,7 +314,10 @@ function dataStoreUsage() {
   DS_REGISTRY.forEach((ds, key) => {
     const b = ds.bytes();
     total += b;
-    rows.push({ key: key.replace("rdm.ds.", "").replace(".v2", ""), kb: b / 1024 });
+    rows.push({
+      key: key.replace("rdm.ds.", "").replace(".v2", ""),
+      kb: b / 1024,
+    });
   });
   return { rows: rows.sort((a, b) => b.kb - a.kb), totalKb: total / 1024 };
 }
@@ -356,6 +355,39 @@ function importAllData(file: File, done: (ok: boolean) => void) {
     }
   };
   r.readAsText(file);
+}
+
+/* ============================================================================
+   8. COPY SYSTEM — works even without the async clipboard API
+   ============================================================================ */
+
+function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    return navigator.clipboard
+      .writeText(text)
+      .then(() => true)
+      .catch(() => legacyCopy(text));
+  }
+  return Promise.resolve(legacyCopy(text));
+}
+
+function legacyCopy(text: string): boolean {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /* ============================================================================
@@ -403,7 +435,6 @@ function escapeHtml(str: string) {
     .replace(/"/g, "&quot;");
 }
 
-/** All Lua-ish blocks are normalised to Luau. */
 function normaliseLang(lang: string) {
   const l = (lang || "").toLowerCase().trim();
   if (!l || l === "lua" || l === "luau" || l === "roblox" || l === "rbx")
@@ -420,12 +451,13 @@ function renderMarkdown(md: string) {
     const language = normaliseLang(lang);
     const id = uid();
     CODE_BANK.set(id, { code: clean, lang: language });
+    const lines = clean.split("\n").length;
     const idx = blocks.length;
     blocks.push(
       `<div class="rdm-code-wrap" data-code-id="${id}">
          <div class="rdm-code-head">
            <span class="rdm-code-lang">${escapeHtml(language)}</span>
-           <span class="rdm-code-target">Roblox Studio</span>
+           <span class="rdm-code-target">Roblox Studio · ${lines} lines</span>
            <span class="rdm-code-actions">
              <button type="button" class="rdm-code-btn" data-act="copy">Copy</button>
              <button type="button" class="rdm-code-btn" data-act="save">Save .luau</button>
@@ -452,6 +484,15 @@ function renderMarkdown(md: string) {
   return text;
 }
 
+/** Pull every fenced code block out of a reply (used by "Copy all code"). */
+function extractCode(md: string) {
+  const out: string[] = [];
+  const re = /```\w*\n?([\s\S]*?)```/g;
+  let m;
+  while ((m = re.exec(md))) out.push(m[1].replace(/\n$/, ""));
+  return out;
+}
+
 /* ============================================================================
    3. LUAU-ONLY / ROBLOX STUDIO ENFORCEMENT
    ============================================================================ */
@@ -473,9 +514,11 @@ function enforcePlatformAnswer(userText: string, reply: string) {
 
 function enforceLuau(reply: string) {
   if (!reply) return reply;
-  // Normalise every lua-ish fence to luau.
   let out = reply.replace(/```(lua|Lua|LUA|roblox|rbx)\b/g, "```luau");
-  out = out.replace(/```\s*\n(?=[\s\S]*?(local |game:GetService|task\.wait))/g, "```luau\n");
+  out = out.replace(
+    /```\s*\n(?=[\s\S]*?(local |game:GetService|task\.wait))/g,
+    "```luau\n"
+  );
   return out;
 }
 
@@ -504,10 +547,7 @@ function buildPhases(userText: string, isCode: boolean, assetCount: number): Pha
   ];
 
   if (!isCode) {
-    return [
-      ...base,
-      { label: "Composing the answer", kind: "check" },
-    ];
+    return [...base, { label: "Composing the answer", kind: "check" }];
   }
 
   const search: Phase[] = [
@@ -534,12 +574,7 @@ function buildPhases(userText: string, isCode: boolean, assetCount: number): Pha
     write.splice(1, 0, { label: "Wiring DataStoreService persistence", kind: "code" });
   }
 
-  return [
-    ...base,
-    ...search,
-    ...write,
-    { label: "Checking for deprecated APIs", kind: "check" },
-  ];
+  return [...base, ...search, ...write, { label: "Checking for deprecated APIs", kind: "check" }];
 }
 
 function buildTrace(userText: string) {
@@ -628,6 +663,11 @@ function downloadText(text: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+function openDiscord() {
+  if (typeof window !== "undefined")
+    window.open(DISCORD_URL, "_blank", "noopener,noreferrer");
+}
+
 function composeSystemPrompt(settings: any, assets: any[]) {
   const catalogue =
     assets.length > 0
@@ -665,6 +705,20 @@ const Icon = ({ path, size = 18, className = "" }: any) => (
     className={className}
   >
     {path}
+  </svg>
+);
+
+/** Filled Discord mark (needs fill, so it's its own component). */
+const DiscordMark = ({ size = 16, className = "" }: any) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
   </svg>
 );
 
@@ -741,6 +795,12 @@ const Icons = {
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </>
   ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
   box: (
     <>
       <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -796,7 +856,59 @@ const Icons = {
     </>
   ),
   heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />,
+  users: (
+    <>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
 };
+
+/* ============================================================================
+   REUSABLE COPY BUTTON
+   ============================================================================ */
+
+function CopyButton({ text, label = "Copy", className = "", size = 13, onDone }: any) {
+  const [done, setDone] = useState(false);
+  const click = async (e: any) => {
+    e.stopPropagation();
+    const ok = await copyToClipboard(text);
+    if (!ok) return;
+    setDone(true);
+    onDone?.();
+    setTimeout(() => setDone(false), 1500);
+  };
+  return (
+    <button
+      type="button"
+      className={`rdm-copy-btn ${done ? "done" : ""} ${className}`}
+      onClick={click}
+      title={label}
+    >
+      <Icon path={done ? Icons.check : Icons.copy} size={size} />
+      <span>{done ? "Copied" : label}</span>
+    </button>
+  );
+}
+
+/* ============================================================================
+   DISCORD BUTTON
+   ============================================================================ */
+
+function DiscordButton({ variant = "solid", label = "Join Discord", size = 16 }: any) {
+  return (
+    <button
+      type="button"
+      className={`dc-btn dc-${variant}`}
+      onClick={openDiscord}
+      title="Join the RDM-ENGINE Discord"
+    >
+      <DiscordMark size={size} />
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
 
 /* ============================================================================
    4. INTRO / LANDING PAGE
@@ -856,6 +968,7 @@ function LandingPage({ onDashboard, onStore, rainbow }: any) {
           >
             Systems
           </button>
+          <DiscordButton variant="nav" label="Discord" size={15} />
           <button className="ld-nav-dash" onClick={() => onDashboard("")}>
             Dashboard
           </button>
@@ -907,13 +1020,15 @@ function LandingPage({ onDashboard, onStore, rainbow }: any) {
             rows={3}
           />
           <div className="ld-composer-foot">
-            <span className="ld-composer-hint">
-              Opens in the Dashboard chat
-            </span>
+            <span className="ld-composer-hint">Opens in the Dashboard chat</span>
             <button className={`ld-generate ${rainbow ? "rainbow-btn" : ""}`} onClick={go}>
               <Icon path={Icons.sparkle} size={15} /> Generate
             </button>
           </div>
+        </div>
+
+        <div className="ld-hero-actions">
+          <DiscordButton variant="hero" label="Join the Discord" size={18} />
         </div>
 
         <div className="ld-marquee">
@@ -928,7 +1043,7 @@ function LandingPage({ onDashboard, onStore, rainbow }: any) {
         </div>
       </header>
 
-      {/* ---------- JOURNEY SECTION ---------- */}
+      {/* ---------- JOURNEY ---------- */}
       <section className="ld-journey">
         <div className="ld-notes">
           <div className="ld-note n1">ideas for my Roblox game</div>
@@ -947,7 +1062,10 @@ function LandingPage({ onDashboard, onStore, rainbow }: any) {
             <div className="ld-belt-node" key={i} style={{ animationDelay: `${i * 0.12}s` }} />
           ))}
         </div>
-        <button className={`ld-journey-cta ${rainbow ? "rainbow-btn" : ""}`} onClick={() => onDashboard("")}>
+        <button
+          className={`ld-journey-cta ${rainbow ? "rainbow-btn" : ""}`}
+          onClick={() => onDashboard("")}
+        >
           Open Dashboard <Icon path={Icons.arrow} size={16} />
         </button>
       </section>
@@ -999,9 +1117,32 @@ function LandingPage({ onDashboard, onStore, rainbow }: any) {
         </div>
       </section>
 
+      {/* ---------- DISCORD COMMUNITY ---------- */}
+      <section className="ld-community">
+        <div className="ld-community-card">
+          <div className="ld-community-glow" />
+          <div className="ld-community-mark">
+            <DiscordMark size={34} />
+          </div>
+          <h3 className="ld-community-title">Build with the community</h3>
+          <p className="ld-community-sub">
+            Share your scripts, drop your .rbxm assets, get help with your Roblox
+            Studio project and see every update first.
+          </p>
+          <div className="ld-community-actions">
+            <DiscordButton variant="big" label="Join the Discord Server" size={20} />
+            <CopyButton text={DISCORD_URL} label="Copy invite" className="ghost" />
+          </div>
+          <div className="ld-community-link">{DISCORD_URL}</div>
+        </div>
+      </section>
+
       <footer className="ld-footer">
         <span className={rainbow ? "rainbow-text" : ""}>RDM-ENGINE</span>
         <span className="ld-footer-sub">{IDENTITY.tagline} · Built for Roblox Studio</span>
+        <div className="ld-footer-actions">
+          <DiscordButton variant="nav" label="Discord" size={15} />
+        </div>
       </footer>
     </div>
   );
@@ -1136,6 +1277,10 @@ function AuthScreen({ onAuth, rainbow, onBack }: any) {
           {busy ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
         </button>
 
+        <div className="rdm-auth-discord">
+          <DiscordButton variant="soft" label="Join our Discord" size={15} />
+        </div>
+
         <p className="rdm-muted rdm-fineprint">
           Accounts are stored in the local DataStore on this device only.
         </p>
@@ -1250,7 +1395,7 @@ function ProModal({ open, onClose, user, onUpgrade, rainbow }: any) {
           <strong>Upcoming & Discounts</strong>
           <p className="rdm-muted">
             Preview upcoming features and updates, plus exclusive <em>weekend</em> and{" "}
-            <em>annual</em> discounts for Pro members.
+            <em>annual</em> discounts for Pro members. Announcements drop in the Discord first.
           </p>
         </div>
 
@@ -1269,6 +1414,10 @@ function ProModal({ open, onClose, user, onUpgrade, rainbow }: any) {
           </button>
         )}
 
+        <div className="rdm-pro-discord">
+          <DiscordButton variant="soft" label="Ask about Pro in Discord" size={15} />
+        </div>
+
         <p className="rdm-muted rdm-fineprint" style={{ marginTop: 10 }}>
           Purchasing requires an active user login.
         </p>
@@ -1278,7 +1427,7 @@ function ProModal({ open, onClose, user, onUpgrade, rainbow }: any) {
 }
 
 /* ============================================================================
-   SETTINGS PANEL (+ DataStore tab)
+   SETTINGS PANEL
    ============================================================================ */
 
 function SettingsPanel({ open, onClose, settings, setSettings, onOpenPro, user, rainbow }: any) {
@@ -1374,6 +1523,14 @@ function SettingsPanel({ open, onClose, settings, setSettings, onOpenPro, user, 
                 on={settings.animations}
                 onToggle={() => update({ animations: !settings.animations })}
               />
+
+              <div className="rdm-settings-discord">
+                <div>
+                  <div className="rdm-toggle-label">Community</div>
+                  <div className="rdm-toggle-desc">Support, updates and asset sharing</div>
+                </div>
+                <DiscordButton variant="soft" label="Join" size={15} />
+              </div>
             </div>
           )}
 
@@ -1404,13 +1561,19 @@ function SettingsPanel({ open, onClose, settings, setSettings, onOpenPro, user, 
                 className="rdm-range"
               />
 
-              <button
-                className="rdm-btn-ghost"
-                style={{ marginTop: 14 }}
-                onClick={() => update({ systemPrompt: IDENTITY.systemBase })}
-              >
-                Reset to Default
-              </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                <button
+                  className="rdm-btn-ghost"
+                  onClick={() => update({ systemPrompt: IDENTITY.systemBase })}
+                >
+                  Reset to Default
+                </button>
+                <CopyButton
+                  text={settings.systemPrompt}
+                  label="Copy prompt"
+                  className="ghost"
+                />
+              </div>
             </div>
           )}
 
@@ -1497,6 +1660,7 @@ function SettingsPanel({ open, onClose, settings, setSettings, onOpenPro, user, 
               >
                 <Icon path={Icons.crown} size={16} /> Buy Pro! (8% Off)
               </button>
+              <DiscordButton variant="soft" label="Join Discord" size={15} />
             </div>
           )}
         </div>
@@ -1560,8 +1724,7 @@ function PublishModal({ open, onClose, user, onPublish, rainbow }: any) {
       return;
     }
     const r = new FileReader();
-    r.onload = () =>
-      setFile({ name: f.name, size: f.size, dataUrl: String(r.result) });
+    r.onload = () => setFile({ name: f.name, size: f.size, dataUrl: String(r.result) });
     r.readAsDataURL(f);
     setErr("");
   };
@@ -1690,15 +1853,13 @@ function PublishModal({ open, onClose, user, onPublish, rainbow }: any) {
             </div>
           )}
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".rbxm,.rbxmx"
-          hidden
-          onChange={pickFile}
-        />
+        <input ref={fileRef} type="file" accept=".rbxm,.rbxmx" hidden onChange={pickFile} />
 
-        {err && <div className="rdm-error" style={{ marginTop: 12 }}>{err}</div>}
+        {err && (
+          <div className="rdm-error" style={{ marginTop: 12 }}>
+            {err}
+          </div>
+        )}
 
         <button
           className={`rdm-btn-primary ${rainbow ? "rainbow-btn" : ""}`}
@@ -1716,6 +1877,9 @@ function PublishModal({ open, onClose, user, onPublish, rainbow }: any) {
 function AssetCard({ asset, user, onDownload, onDelete, onLike, onAsk }: any) {
   const liked = user && asset.likes?.includes(user.email);
   const mine = user && asset.authorEmail === user.email;
+
+  const shareText = `${asset.name} — ${asset.description}\n[${asset.category}] v${asset.version} by ${asset.author}\nFrom the RDM-ENGINE Asset Store · ${DISCORD_URL}`;
+
   return (
     <div className="st-card fade-in-up">
       <div className="st-card-thumb" data-cat={asset.category}>
@@ -1745,6 +1909,7 @@ function AssetCard({ asset, user, onDownload, onDelete, onLike, onAsk }: any) {
           <button className="st-dl" onClick={() => onDownload(asset)}>
             <Icon path={Icons.download} size={14} /> Download ({asset.downloads || 0})
           </button>
+          <CopyButton text={shareText} label="" className="st-copy" size={14} />
           <button
             className={`st-like ${liked ? "on" : ""}`}
             onClick={() => onLike(asset)}
@@ -1788,8 +1953,7 @@ function AssetStore({ user, rainbow, onAsk }: any) {
     }
     if (sort === "new") out.sort((a, b) => b.createdAt - a.createdAt);
     if (sort === "dl") out.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
-    if (sort === "like")
-      out.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+    if (sort === "like") out.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
     return out;
   }, [assets, q, cat, sort]);
 
@@ -1835,12 +1999,15 @@ function AssetStore({ user, rainbow, onAsk }: any) {
             {stats.downloads || 0} total downloads · Roblox Studio ready
           </p>
         </div>
-        <button
-          className={`rdm-btn-primary ${rainbow ? "rainbow-btn" : ""}`}
-          onClick={() => setPublishOpen(true)}
-        >
-          <Icon path={Icons.upload} size={16} /> Publish Asset
-        </button>
+        <div className="st-head-actions">
+          <DiscordButton variant="soft" label="Share on Discord" size={15} />
+          <button
+            className={`rdm-btn-primary ${rainbow ? "rainbow-btn" : ""}`}
+            onClick={() => setPublishOpen(true)}
+          >
+            <Icon path={Icons.upload} size={16} /> Publish Asset
+          </button>
+        </div>
       </div>
 
       <div className="st-controls">
@@ -1872,8 +2039,7 @@ function AssetStore({ user, rainbow, onAsk }: any) {
           </div>
           <h3>No assets here yet</h3>
           <p className="rdm-muted">
-            Publish your first .rbxm and it becomes downloadable for everyone using
-            this engine.
+            Publish your first .rbxm and it becomes downloadable for everyone using this engine.
           </p>
           <button className="rdm-btn-ghost" onClick={() => setPublishOpen(true)}>
             <Icon path={Icons.plus} size={14} /> Publish the first one
@@ -1938,11 +2104,16 @@ function FormatToolbar({ onFormat, rainbow }: any) {
 }
 
 /* ============================================================================
-   MESSAGE BUBBLE
+   MESSAGE BUBBLE (with copy actions)
    ============================================================================ */
 
-function MessageBubble({ msg, rainbow }: any) {
+function MessageBubble({ msg, rainbow, onCopied }: any) {
   const isUser = msg.role === "user";
+  const codeBlocks = useMemo(
+    () => (isUser ? [] : extractCode(msg.content || "")),
+    [msg.content, isUser]
+  );
+
   return (
     <div className={`rdm-msg-row ${isUser ? "user" : "ai"} fade-in-up`}>
       {!isUser && (
@@ -1956,11 +2127,44 @@ function MessageBubble({ msg, rainbow }: any) {
           className="rdm-md"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
         />
-        {!isUser && msg.hasCode && (
-          <div className="rdm-msg-foot">
-            <Icon path={Icons.box} size={12} /> Built for Roblox Studio · Luau
+        <div className={`rdm-msg-foot ${isUser ? "user" : ""}`}>
+          {!isUser && msg.hasCode && (
+            <span className="rdm-msg-tag">
+              <Icon path={Icons.box} size={12} /> Roblox Studio · Luau
+            </span>
+          )}
+          <div className="rdm-msg-tools">
+            <CopyButton
+              text={msg.content}
+              label="Copy"
+              size={12}
+              className="tiny"
+              onDone={onCopied}
+            />
+            {codeBlocks.length > 0 && (
+              <CopyButton
+                text={codeBlocks.join("\n\n")}
+                label={codeBlocks.length > 1 ? `Copy all code (${codeBlocks.length})` : "Copy code"}
+                size={12}
+                className="tiny"
+                onDone={onCopied}
+              />
+            )}
+            {codeBlocks.length > 0 && (
+              <button
+                type="button"
+                className="rdm-copy-btn tiny"
+                onClick={() =>
+                  downloadText(codeBlocks.join("\n\n"), `RDM-Script-${Date.now()}.luau`)
+                }
+                title="Save as .luau"
+              >
+                <Icon path={Icons.download} size={12} />
+                <span>Save .luau</span>
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
       {isUser && <div className="rdm-avatar user">You</div>}
     </div>
@@ -1976,7 +2180,13 @@ function ThinkingPanel({ phases, idx, trace, elapsed, rainbow, showTrace }: any)
   const pct = Math.min(96, ((idx + 1) / phases.length) * 100);
 
   const iconFor = (kind: string) =>
-    kind === "search" ? Icons.search : kind === "code" ? Icons.code : kind === "check" ? Icons.check : Icons.brain;
+    kind === "search"
+      ? Icons.search
+      : kind === "code"
+      ? Icons.code
+      : kind === "check"
+      ? Icons.check
+      : Icons.brain;
 
   return (
     <div className="rdm-msg-row ai fade-in">
@@ -2061,7 +2271,7 @@ function TypingIndicator({ rainbow }: any) {
 }
 
 /* ============================================================================
-   WELCOME STATE (dashboard)
+   WELCOME STATE
    ============================================================================ */
 
 const UI_PRESETS = [
@@ -2090,8 +2300,8 @@ function WelcomeState({ rainbow, name, onPick, assetCount }: any) {
         Hello{name ? `, ${name.split(" ")[0]}` : ""} 👋
       </h1>
       <p className="rdm-muted">
-        I'm <strong>RDM-ENGINE</strong>. I write <strong>Luau</strong> only, and
-        everything I build is for <strong>Roblox Studio</strong>.
+        I'm <strong>RDM-ENGINE</strong>. I write <strong>Luau</strong> only, and everything I
+        build is for <strong>Roblox Studio</strong>.
       </p>
       <div className="rdm-welcome-chips">
         <span className="rdm-wchip">
@@ -2120,9 +2330,14 @@ function WelcomeState({ rainbow, name, onPick, assetCount }: any) {
       <div className="rdm-suggest-grid">
         {list.map((s) => (
           <div className="rdm-suggest-card" key={s} onClick={() => onPick(s)}>
-            {s}
+            <span>{s}</span>
+            <CopyButton text={s} label="" size={12} className="tiny ghosty" />
           </div>
         ))}
+      </div>
+
+      <div className="rdm-welcome-discord">
+        <DiscordButton variant="soft" label="Join the Discord" size={15} />
       </div>
     </div>
   );
@@ -2185,10 +2400,7 @@ export default function App() {
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.setAttribute("data-theme", settings.theme);
-    document.documentElement.setAttribute(
-      "data-anim",
-      settings.animations ? "on" : "off"
-    );
+    document.documentElement.setAttribute("data-anim", settings.animations ? "on" : "off");
   }, [settings.theme, settings.animations]);
 
   /* ---------- drafts ---------- */
@@ -2229,15 +2441,13 @@ export default function App() {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }, [input]);
 
-  /* ---------- thinking phase driver ---------- */
+  /* ---------- thinking driver ---------- */
   useEffect(() => {
     if (!think.active) return;
     const speed =
       settings.thinkingSpeed === "fast" ? 480 : settings.thinkingSpeed === "deep" ? 1100 : 780;
     const t = setInterval(() => {
-      setThink((s) =>
-        s.idx < s.phases.length - 1 ? { ...s, idx: s.idx + 1 } : s
-      );
+      setThink((s) => (s.idx < s.phases.length - 1 ? { ...s, idx: s.idx + 1 } : s));
     }, speed);
     return () => clearInterval(t);
   }, [think.active, think.phases.length, settings.thinkingSpeed]);
@@ -2248,14 +2458,18 @@ export default function App() {
     return () => clearInterval(t);
   }, [think.active, think.startedAt]);
 
-  /* ---------- toast ---------- */
   const flash = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(""), 2200);
   };
 
-  /* ---------- code block actions ---------- */
-  const onMessagesClick = (e: any) => {
+  const bumpCopies = () => {
+    setStats((s: any) => ({ ...s, copies: (s.copies || 0) + 1 }));
+    playBlip(880, 0.05, settings.sound);
+  };
+
+  /* ---------- code block actions (event delegation) ---------- */
+  const onMessagesClick = async (e: any) => {
     const btn = e.target?.closest?.(".rdm-code-btn");
     if (!btn) return;
     const wrap = btn.closest(".rdm-code-wrap");
@@ -2265,10 +2479,14 @@ export default function App() {
     if (!entry) return;
     const act = btn.getAttribute("data-act");
     if (act === "copy") {
-      navigator.clipboard?.writeText(entry.code);
-      btn.textContent = "Copied";
-      setTimeout(() => (btn.textContent = "Copy"), 1400);
-      playBlip(880, 0.05, settings.sound);
+      const ok = await copyToClipboard(entry.code);
+      btn.textContent = ok ? "Copied" : "Failed";
+      btn.classList.toggle("ok", ok);
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("ok");
+      }, 1500);
+      if (ok) bumpCopies();
     } else if (act === "save") {
       downloadText(entry.code, `RDM-Script-${Date.now()}.luau`);
       flash("Saved .luau — drag it into Roblox Studio");
@@ -2352,12 +2570,11 @@ export default function App() {
     const [pre, post] = tool.wrap;
     const before = input.slice(0, start);
     const after = input.slice(end);
-    const placeholder = selected || (tool.line ? "" : "");
-    const next = before + pre + placeholder + post + after;
+    const next = before + pre + selected + post + after;
     setInput(next);
     requestAnimationFrame(() => {
       ta.focus();
-      const cursor = start + pre.length + placeholder.length;
+      const cursor = start + pre.length + selected.length;
       ta.setSelectionRange(cursor, cursor);
     });
   };
@@ -2392,9 +2609,7 @@ export default function App() {
     let chatId = activeId;
     if (chatId && current) {
       setChats((prev) =>
-        prev.map((c) =>
-          c.id === chatId ? { ...c, messages: history, updated: Date.now() } : c
-        )
+        prev.map((c) => (c.id === chatId ? { ...c, messages: history, updated: Date.now() } : c))
       );
     } else {
       chatId = uid();
@@ -2415,7 +2630,6 @@ export default function App() {
     DS.drafts.write((d) => ({ ...d, [activeId || "new"]: "" }));
     setStats((s: any) => ({ ...s, messages: (s.messages || 0) + 1 }));
 
-    /* --- start Thinking + Searching systems --- */
     const isCode = looksLikeCodeRequest(text);
     setThink({
       active: true,
@@ -2427,15 +2641,13 @@ export default function App() {
     setElapsed(0);
     setSending(true);
 
-    // Minimum visible thinking time so the animation never flashes.
-    const minDelay =
-      settings.animations
-        ? settings.thinkingSpeed === "fast"
-          ? 900
-          : settings.thinkingSpeed === "deep"
-          ? 2400
-          : 1500
-        : 0;
+    const minDelay = settings.animations
+      ? settings.thinkingSpeed === "fast"
+        ? 900
+        : settings.thinkingSpeed === "deep"
+        ? 2400
+        : 1500
+      : 0;
     const started = Date.now();
 
     try {
@@ -2477,13 +2689,10 @@ export default function App() {
 
       setChats((prev) =>
         prev.map((c) =>
-          c.id === chatId
-            ? { ...c, messages: [...c.messages, aiMsg], updated: Date.now() }
-            : c
+          c.id === chatId ? { ...c, messages: [...c.messages, aiMsg], updated: Date.now() } : c
         )
       );
-      if (scripts > 0)
-        setStats((s: any) => ({ ...s, scripts: (s.scripts || 0) + scripts }));
+      if (scripts > 0) setStats((s: any) => ({ ...s, scripts: (s.scripts || 0) + scripts }));
       playBlip(990, 0.09, settings.sound);
     } catch {
       const aiMsg = {
@@ -2517,6 +2726,14 @@ export default function App() {
     );
     setTimeout(() => textareaRef.current?.focus(), 60);
   };
+
+  /* ---------- copy whole conversation ---------- */
+  const conversationText = useMemo(() => {
+    if (!activeChat) return "";
+    return activeChat.messages
+      .map((m: any) => `${m.role === "user" ? "You" : "RDM-ENGINE"}:\n${m.content}`)
+      .join("\n\n---\n\n");
+  }, [activeChat]);
 
   const handleUpgrade = () => {
     if (!user) return;
@@ -2577,11 +2794,7 @@ export default function App() {
             </div>
             <span className={rainbow ? "rainbow-text" : ""}>RDM-ENGINE</span>
           </div>
-          <button
-            className="rdm-icon-btn"
-            title="Back to intro"
-            onClick={() => setView("landing")}
-          >
+          <button className="rdm-icon-btn" title="Back to intro" onClick={() => setView("landing")}>
             <Icon path={Icons.home} size={16} />
           </button>
         </div>
@@ -2666,6 +2879,10 @@ export default function App() {
           ))}
         </div>
 
+        <div className="rdm-sidebar-discord">
+          <DiscordButton variant="wide" label="Join Discord Server" size={16} />
+        </div>
+
         <div className="rdm-sidebar-foot">
           <button className="rdm-user-chip" onClick={() => setSettingsOpen(true)}>
             <div className={`rdm-avatar user sm ${user.pro ? "pro" : ""}`}>
@@ -2706,9 +2923,19 @@ export default function App() {
           )}
 
           <div className="rdm-header-right">
+            {panel === "chat" && activeChat && activeChat.messages.length > 0 && (
+              <CopyButton
+                text={conversationText}
+                label="Copy chat"
+                className="header"
+                size={13}
+                onDone={bumpCopies}
+              />
+            )}
             <span className="rdm-luau-pill" title="Output language">
               <Icon path={Icons.code} size={12} /> Luau
             </span>
+            <DiscordButton variant="icon" label="" size={16} />
             {!user.pro && (
               <button
                 className={`rdm-pro-pill ${rainbow ? "rainbow-btn" : ""}`}
@@ -2717,11 +2944,7 @@ export default function App() {
                 <Icon path={Icons.crown} size={14} /> Get Pro
               </button>
             )}
-            <button
-              className="rdm-icon-btn"
-              onClick={() => setSettingsOpen(true)}
-              title="Settings"
-            >
+            <button className="rdm-icon-btn" onClick={() => setSettingsOpen(true)} title="Settings">
               <Icon path={Icons.settings} size={19} />
             </button>
           </div>
@@ -2747,7 +2970,7 @@ export default function App() {
                   />
                 ) : (
                   activeChat.messages.map((m: any) => (
-                    <MessageBubble key={m.id} msg={m} rainbow={rainbow} />
+                    <MessageBubble key={m.id} msg={m} rainbow={rainbow} onCopied={bumpCopies} />
                   ))
                 )}
 
@@ -2788,13 +3011,7 @@ export default function App() {
                   >
                     <Icon path={Icons.image} size={19} />
                   </button>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={onPickImage}
-                  />
+                  <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
                   <textarea
                     ref={textareaRef}
                     className="rdm-textarea-input"
@@ -2858,7 +3075,7 @@ const CSS = `
 :root{
   --bg:#0a0b12; --bg2:#12131f; --panel:#161826; --panel2:#1c1f30;
   --border:#282b40; --text:#eef0f8; --muted:#9aa0b8; --accent:#7c6bff;
-  --accent2:#4dd0ff; --danger:#ff5c6a; --radius:16px;
+  --accent2:#4dd0ff; --danger:#ff5c6a; --discord:#5865F2; --radius:16px;
 }
 [data-theme="aurora"]{
   --bg:#07131a; --bg2:#0a1b24; --panel:#0e2530; --panel2:#123240;
@@ -2921,7 +3138,35 @@ button{font-family:inherit}
 .rdm-logo-orb.sm{width:28px;height:28px;border-radius:9px}
 .rdm-logo-orb.big{width:72px;height:72px;border-radius:22px}
 
-/* ============ LANDING PAGE ============ */
+/* ============ DISCORD BUTTONS ============ */
+.dc-btn{display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;font-weight:700;
+  transition:.2s;color:#fff;background:var(--discord);border-radius:11px;padding:10px 15px;font-size:13.5px}
+.dc-btn:hover{filter:brightness(1.12);transform:translateY(-1px);box-shadow:0 10px 26px #5865F255}
+.dc-btn.dc-nav{padding:9px 13px;font-size:13px;background:#5865F224;color:#c7ccff;border:1px solid #5865F24d}
+.dc-btn.dc-nav:hover{background:var(--discord);color:#fff}
+.dc-btn.dc-icon{padding:9px;border-radius:10px;background:#5865F220;color:#8f9bff;border:1px solid #5865F240}
+.dc-btn.dc-icon:hover{background:var(--discord);color:#fff}
+.dc-btn.dc-soft{background:#5865F21f;color:#aab2ff;border:1px solid #5865F240;font-size:12.5px;padding:9px 14px}
+.dc-btn.dc-soft:hover{background:var(--discord);color:#fff}
+.dc-btn.dc-wide{width:100%;justify-content:center;padding:11px;font-size:13px}
+.dc-btn.dc-hero{padding:13px 24px;font-size:14.5px;border-radius:14px;box-shadow:0 14px 34px #5865F244}
+.dc-btn.dc-big{padding:15px 28px;font-size:15.5px;border-radius:15px;box-shadow:0 16px 40px #5865F255}
+
+/* ============ COPY BUTTONS ============ */
+.rdm-copy-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--muted);border-radius:9px;padding:6px 11px;font-size:12px;
+  font-weight:700;cursor:pointer;transition:.15s}
+.rdm-copy-btn:hover{color:var(--text);border-color:var(--accent);background:var(--panel)}
+.rdm-copy-btn.done{color:#7bed9f;border-color:#7bed9f66;background:#7bed9f16}
+.rdm-copy-btn.tiny{padding:4px 9px;font-size:11px;border-radius:8px}
+.rdm-copy-btn.tiny span:empty{display:none}
+.rdm-copy-btn.ghost{background:none}
+.rdm-copy-btn.ghosty{background:none;border-color:transparent;opacity:0}
+.rdm-suggest-card:hover .rdm-copy-btn.ghosty{opacity:1}
+.rdm-copy-btn.header{padding:8px 13px;border-radius:20px}
+.rdm-copy-btn.st-copy{padding:9px 10px;border-radius:10px}
+
+/* ============ LANDING ============ */
 .ld-root{min-height:100vh;background:
   radial-gradient(900px 500px at 15% -5%,#7c6bff26,transparent),
   radial-gradient(800px 500px at 90% 10%,#4dd0ff1f,transparent),
@@ -2954,8 +3199,7 @@ button{font-family:inherit}
 .ld-title{position:relative;margin:0;display:flex;flex-direction:column;gap:6px;line-height:1.02}
 .ld-title-1{font-size:clamp(30px,6.4vw,62px);font-weight:900;letter-spacing:-1.5px;color:#fff;
   text-shadow:0 8px 40px #7c6bff55}
-.ld-title-2{font-size:clamp(22px,4.6vw,44px);font-weight:900;letter-spacing:-.8px;
-  color:#4dd0ff}
+.ld-title-2{font-size:clamp(22px,4.6vw,44px);font-weight:900;letter-spacing:-.8px;color:#4dd0ff}
 .ld-sub{position:relative;max-width:560px;margin:20px auto 0;color:#a7adc7;font-size:15px;line-height:1.6}
 
 .ld-composer{position:relative;width:100%;max-width:660px;margin:30px auto 0;border-radius:20px;
@@ -2972,8 +3216,9 @@ button{font-family:inherit}
 .ld-generate{display:flex;align-items:center;gap:7px;border:none;border-radius:12px;padding:10px 16px;
   font-weight:800;font-size:13.5px;color:#fff;background:linear-gradient(90deg,#7c6bff,#4dd0ff);cursor:pointer;transition:.2s}
 .ld-generate:hover{transform:translateY(-1px);filter:brightness(1.08)}
+.ld-hero-actions{position:relative;margin-top:22px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 
-.ld-marquee{position:relative;width:100%;margin-top:52px;overflow:hidden;
+.ld-marquee{position:relative;width:100%;margin-top:44px;overflow:hidden;
   mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .ld-marquee-track{display:flex;gap:14px;width:max-content;animation:marquee 34s linear infinite}
@@ -3005,7 +3250,7 @@ button{font-family:inherit}
   font-weight:800;font-size:15px;color:#fff;background:linear-gradient(90deg,#7c6bff,#4dd0ff);cursor:pointer;transition:.2s}
 .ld-journey-cta:hover{transform:translateY(-2px)}
 
-.ld-features{padding:70px 20px 60px;max-width:1080px;margin:0 auto}
+.ld-features{padding:70px 20px 40px;max-width:1080px;margin:0 auto}
 .ld-sec-title{text-align:center;font-size:clamp(20px,3.4vw,30px);font-weight:900;margin:0 0 34px;color:#fff}
 .ld-feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .ld-feature{background:#10121e;border:1px solid #ffffff12;border-radius:18px;padding:22px;transition:.25s}
@@ -3014,9 +3259,25 @@ button{font-family:inherit}
   background:linear-gradient(135deg,#7c6bff,#4dd0ff);margin-bottom:14px}
 .ld-feature-title{font-weight:800;font-size:15.5px;margin-bottom:6px;color:#fff}
 .ld-feature-desc{font-size:13px;color:#9aa0b8;line-height:1.55}
-.ld-footer{padding:36px 20px 50px;text-align:center;display:flex;flex-direction:column;gap:6px;
+
+/* ---------- DISCORD SECTION ---------- */
+.ld-community{padding:40px 20px 70px;max-width:1080px;margin:0 auto}
+.ld-community-card{position:relative;overflow:hidden;text-align:center;border-radius:24px;padding:44px 24px;
+  background:linear-gradient(160deg,#151830,#0e1020);border:1px solid #5865F240}
+.ld-community-glow{position:absolute;width:420px;height:420px;border-radius:50%;background:#5865F2;
+  filter:blur(120px);opacity:.28;top:-180px;left:50%;transform:translateX(-50%);pointer-events:none}
+.ld-community-mark{position:relative;width:66px;height:66px;border-radius:20px;margin:0 auto 16px;
+  display:grid;place-items:center;color:#fff;background:var(--discord);box-shadow:0 16px 40px #5865F255}
+.ld-community-title{position:relative;margin:0 0 8px;font-size:clamp(20px,3.4vw,28px);font-weight:900;color:#fff}
+.ld-community-sub{position:relative;max-width:480px;margin:0 auto;color:#a7adc7;font-size:14px;line-height:1.6}
+.ld-community-actions{position:relative;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+.ld-community-link{position:relative;margin-top:14px;font-size:12px;color:#767d9c;
+  font-family:'SF Mono',Menlo,Consolas,monospace}
+
+.ld-footer{padding:36px 20px 50px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;
   border-top:1px solid #ffffff0d;font-weight:900}
 .ld-footer-sub{font-size:12px;color:#767d9c;font-weight:500}
+.ld-footer-actions{margin-top:8px}
 
 /* ============ AUTH ============ */
 .rdm-auth-wrap{position:relative;flex:1;display:grid;place-items:center;padding:24px;overflow:hidden}
@@ -3031,6 +3292,7 @@ button{font-family:inherit}
 .rdm-auth-logo{text-align:center;margin-bottom:6px}
 .rdm-auth-logo .rdm-logo-orb{margin:0 auto 12px}
 .rdm-auth-logo h1{margin:0;font-size:26px;letter-spacing:.5px}
+.rdm-auth-discord{display:flex;justify-content:center}
 .rdm-tab-switch{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:4px}
 .rdm-tab-switch button{flex:1;padding:9px;border:none;background:none;color:var(--muted);font-weight:600;
   border-radius:9px;cursor:pointer;transition:.2s}
@@ -3079,6 +3341,7 @@ button{font-family:inherit}
 .rdm-mini-btn.danger:hover{color:var(--danger)}
 .rdm-rename-input{flex:1;background:var(--bg);border:1px solid var(--accent);border-radius:7px;color:var(--text);
   padding:4px 7px;font-size:13px;outline:none}
+.rdm-sidebar-discord{padding-top:4px}
 .rdm-sidebar-foot{display:flex;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:12px}
 .rdm-user-chip{flex:1;display:flex;align-items:center;gap:9px;padding:8px;border:none;background:none;
   color:var(--text);cursor:pointer;border-radius:11px;transition:.15s}
@@ -3140,8 +3403,13 @@ button{font-family:inherit}
 .rdm-bubble.ai{background:var(--panel);border:1px solid var(--border);border-top-left-radius:5px}
 .rdm-bubble.user{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-top-right-radius:5px}
 .rdm-msg-img{max-width:240px;border-radius:11px;margin-bottom:8px;display:block}
-.rdm-msg-foot{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border);
-  font-size:11px;color:var(--muted);font-weight:600}
+.rdm-msg-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:9px;
+  border-top:1px solid var(--border)}
+.rdm-msg-foot.user{border-top-color:#ffffff33}
+.rdm-msg-tag{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-weight:600}
+.rdm-msg-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.rdm-bubble.user .rdm-copy-btn{background:#ffffff1f;border-color:#ffffff33;color:#fff}
+.rdm-bubble.user .rdm-copy-btn:hover{background:#ffffff33}
 
 /* ---------- MARKDOWN ---------- */
 .rdm-md h1{font-size:22px;margin:8px 0}
@@ -3153,14 +3421,14 @@ button{font-family:inherit}
 .rdm-md .rdm-inline{background:var(--bg);padding:2px 6px;border-radius:5px;font-size:13px;
   font-family:'SF Mono',Menlo,Consolas,monospace}
 .rdm-code-wrap{background:var(--bg);border:1px solid var(--border);border-radius:12px;margin:12px 0;overflow:hidden}
-.rdm-code-head{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);
-  background:#ffffff06}
+.rdm-code-head{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);background:#ffffff06}
 .rdm-code-lang{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#4dd0ff}
 .rdm-code-target{font-size:10px;color:var(--muted);border-left:1px solid var(--border);padding-left:8px}
 .rdm-code-actions{margin-left:auto;display:flex;gap:6px}
 .rdm-code-btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:10.5px;
   font-weight:700;padding:4px 9px;border-radius:7px;cursor:pointer;transition:.15s}
 .rdm-code-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.rdm-code-btn.ok{background:#7bed9f22;border-color:#7bed9f66;color:#7bed9f}
 .rdm-code{margin:0;overflow-x:auto;background:none;border:none}
 .rdm-code code{display:block;padding:12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12.5px;
   line-height:1.6;white-space:pre}
@@ -3214,6 +3482,7 @@ button{font-family:inherit}
 .rdm-welcome-chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px}
 .rdm-wchip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--muted);
   background:var(--panel);border:1px solid var(--border);padding:6px 11px;border-radius:20px}
+.rdm-welcome-discord{margin-top:24px}
 .rdm-preset-tabs{display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:12px;
   padding:4px;margin-top:22px}
 .rdm-preset-tabs button{padding:8px 16px;border:none;background:none;color:var(--muted);font-weight:700;
@@ -3221,7 +3490,8 @@ button{font-family:inherit}
 .rdm-preset-tabs button.active{background:var(--accent);color:#fff}
 .rdm-suggest-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:560px}
 .rdm-suggest-card{padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--panel);
-  font-size:13.5px;text-align:left;cursor:pointer;transition:.2s}
+  font-size:13.5px;text-align:left;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:10px}
+.rdm-suggest-card span{flex:1}
 .rdm-suggest-card:hover{border-color:var(--accent);transform:translateY(-2px);background:var(--panel2)}
 
 /* ---------- COMPOSER ---------- */
@@ -3229,8 +3499,7 @@ button{font-family:inherit}
 .rdm-composer{border-radius:20px;padding:10px 12px}
 .rdm-toolbar{display:flex;align-items:center;gap:3px;padding-bottom:8px;margin-bottom:6px;
   border-bottom:1px solid var(--border);flex-wrap:wrap}
-.rdm-toolbar-note{margin-left:auto;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);
-  text-transform:uppercase}
+.rdm-toolbar-note{margin-left:auto;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-transform:uppercase}
 .rdm-tool-btn{border:none;background:none;color:var(--muted);cursor:pointer;padding:7px;border-radius:8px;
   display:grid;place-items:center;transition:.15s}
 .rdm-tool-btn:hover{background:var(--panel2);color:var(--accent)}
@@ -3255,6 +3524,7 @@ button{font-family:inherit}
 /* ============ ASSET STORE ============ */
 .st-root{max-width:1080px;margin:0 auto;padding:26px 20px 60px}
 .st-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.st-head-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .st-title{margin:0 0 4px;font-size:28px;font-weight:900}
 .st-controls{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
 .st-search{flex:1;min-width:220px;display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--panel);
@@ -3282,9 +3552,9 @@ button{font-family:inherit}
 .st-tags{display:flex;flex-wrap:wrap;gap:5px}
 .st-tag{font-size:10.5px;color:#4dd0ff;background:#4dd0ff14;border:1px solid #4dd0ff2e;padding:2px 7px;border-radius:6px}
 .st-meta{display:flex;flex-wrap:wrap;gap:5px;font-size:11px;color:var(--muted);margin-top:auto}
-.st-card-actions{display:flex;gap:6px;padding-top:10px;border-top:1px solid var(--border)}
-.st-dl{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;
-  padding:9px;background:var(--accent);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;transition:.2s}
+.st-card-actions{display:flex;gap:6px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap}
+.st-dl{flex:1;min-width:130px;display:flex;align-items:center;justify-content:center;gap:7px;border:none;
+  border-radius:10px;padding:9px;background:var(--accent);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;transition:.2s}
 .st-dl:hover{filter:brightness(1.12)}
 .st-like,.st-ask,.st-del{display:flex;align-items:center;gap:5px;border:1px solid var(--border);background:none;
   color:var(--muted);border-radius:10px;padding:9px 10px;cursor:pointer;font-size:11.5px;font-weight:700;transition:.2s}
@@ -3317,6 +3587,8 @@ button{font-family:inherit}
 .rdm-settings-tabs button{flex:1;padding:9px;border:none;background:none;color:var(--muted);font-weight:600;
   border-radius:9px;cursor:pointer;font-size:12.5px;transition:.2s}
 .rdm-settings-tabs button.active{background:var(--accent);color:#fff}
+.rdm-settings-discord{display:flex;align-items:center;justify-content:space-between;gap:12px;
+padding:14px 0 4px;border-top:1px solid var(--border);margin-top:10px}
 .rdm-field-label{display:block;font-size:13px;font-weight:600;margin-bottom:9px;color:var(--muted)}
 .rdm-theme-row{display:flex;gap:8px;margin-bottom:18px}
 .rdm-theme-chip{flex:1;padding:12px;border-radius:11px;border:2px solid var(--border);cursor:pointer;
@@ -3345,8 +3617,7 @@ button{font-family:inherit}
 .rdm-ds-bar{flex:1;height:6px;border-radius:4px;background:var(--border);overflow:hidden}
 .rdm-ds-fill{height:100%;background:linear-gradient(90deg,#7c6bff,#4dd0ff)}
 .rdm-ds-kb{width:64px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
-.rdm-ds-actions{display:flex;gap:8px;flex-w
-rap:wrap}
+.rdm-ds-actions{display:flex;gap:8px;flex-wrap:wrap}
 .rdm-pro-card{width:100%;max-width:540px;max-height:88vh;overflow-y:auto;border-radius:24px;padding:32px 26px;position:relative}
 .rdm-pro-hero{text-align:center;margin-bottom:22px}
 .rdm-crown{color:#ffb347;display:flex;justify-content:center;margin-bottom:6px}
@@ -3363,7 +3634,8 @@ rap:wrap}
 .rdm-pro-updates p{margin:6px 0 0}
 .rdm-pro-loginnote{background:#ffb34722;color:#ffcf8a;padding:13px;border-radius:12px;text-align:center;font-size:13px;font-weight:600}
 .rdm-pro-active{background:#7bed9f22;color:#7bed9f;padding:13px;border-radius:12px;text-align:center;font-weight:700}
-.rdm-pro-buy{width:100%;font-size:15px;padding:15px}/* ---------- TOAST ---------- */
+.rdm-pro-buy{width:100%;font-size:15px;padding:15px}
+.rdm-pro-discord{display:flex;justify-content:center;margin-top:14px}/* ---------- TOAST ---------- */
 .rdm-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:200;
   background:var(--panel);border:1px solid var(--border);color:var(--text);padding:12px 20px;
   border-radius:14px;font-size:13px;font-weight:600;box-shadow:0 18px 44px #00000077}.rdm-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:none}/* ---------- RESPONSIVE ---------- */
@@ -3385,13 +3657,19 @@ rap:wrap}
   .ld-nav-links .ld-nav-link{display:none}
   .ld-note{display:none}
   .st-row2{grid-template-columns:1fr}
+  .rdm-copy-btn.header span{display:none}
+  .rdm-copy-btn.header{padding:9px}
 }
 @media (max-width:600px){
   .ld-feature-grid{grid-template-columns:1fr}
   .ld-nav{padding:11px 14px}
+  .ld-nav-links .dc-btn.dc-nav span{display:none}
+  .ld-nav-links .dc-btn.dc-nav{padding:9px}
   .ld-hero{padding:48px 16px 30px}
   .ld-composer{padding:12px}
+  .ld-community-card{padding:32px 18px}
   .st-head{flex-direction:column;align-items:stretch}
+  .st-head-actions{justify-content:space-between}
   .st-grid{grid-template-columns:1fr}
 }
 @media (max-width:480px){
@@ -3401,5 +3679,6 @@ rap:wrap}
   .rdm-messages{padding:16px 12px 8px}
   .rdm-model-menu{width:min(290px,calc(100vw - 40px))}
   .rdm-toolbar-note{display:none}
+  .rdm-msg-tools{width:100%;margin-left:0}
 }
 `;
